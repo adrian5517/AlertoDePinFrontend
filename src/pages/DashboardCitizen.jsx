@@ -376,7 +376,7 @@ const DashboardCitizen = () => {
               }
             } catch (geoError) {
               console.log('Geocoding failed, using default address:', geoError);
-              address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+              address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
             }
 
             const alertData = {
@@ -435,11 +435,12 @@ const DashboardCitizen = () => {
               const latitude = approx.lat;
 
               // Get address from coordinates using reverse geocoding
-              let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+              // Prefer coordinate string as fallback (avoid reusing static profile address)
+              let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (approximate)`;
               try {
                 const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
                 const data = await response.json();
-                if (data.display_name) address = data.display_name;
+                if (data.display_name) address = `${data.display_name} (approximate)`;
               } catch (geoError) {
                 console.log('Geocoding failed, using default address:', geoError);
               }
@@ -523,11 +524,11 @@ const DashboardCitizen = () => {
           const longitude = approx.lon;
           const latitude = approx.lat;
 
-          let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (approximate)`;
           try {
             const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
             const data = await response.json();
-            if (data.display_name) address = data.display_name;
+            if (data.display_name) address = `${data.display_name} (approximate)`;
           } catch (geoError) {
             console.log('Geocoding failed, using default address:', geoError);
           }
