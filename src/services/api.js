@@ -166,6 +166,26 @@ export const usersAPI = {
     const data = await apiCall('/users/stats');
     return data;
   },
+  // Search users for adding family members
+  search: async (query) => {
+    const data = await apiCall(`/users/search?q=${encodeURIComponent(query)}`);
+    return data;
+  },
+
+  // Get current user's family members
+  getFamily: async () => {
+    const data = await apiCall('/users/family');
+    return data;
+  },
+
+  // Add or remove a family member (body: { action: 'add'|'remove', memberId })
+  updateFamily: async (payload) => {
+    const data = await apiCall('/users/family', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    return data;
+  },
 };
 
 // Notifications API

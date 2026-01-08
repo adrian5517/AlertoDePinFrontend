@@ -66,6 +66,10 @@ const DashboardCitizen = () => {
     newPassword: '',
     confirmPassword: '',
   });
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [familySearchQuery, setFamilySearchQuery] = useState('');
+  const [familySearchResults, setFamilySearchResults] = useState([]);
+  const [familyLoading, setFamilyLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -160,8 +164,65 @@ const DashboardCitizen = () => {
         contactNumber: user.contactNumber || '',
         address: user.address || '',
       });
+      // load family members
+      fetchFamilyMembers();
     }
   }, [user]);
+
+  const fetchFamilyMembers = async () => {
+    if (!user) return;
+    try {
+      setFamilyLoading(true);
+      const res = await usersAPI.getFamily();
+      setFamilyMembers(res.family || []);
+    } catch (e) {
+      console.error('Failed to fetch family members', e);
+    } finally {
+      setFamilyLoading(false);
+    }
+  };
+
+  const handleFamilySearch = async () => {
+    if (!familySearchQuery.trim()) return;
+    try {
+      setFamilyLoading(true);
+      const res = await usersAPI.search(familySearchQuery.trim());
+      setFamilySearchResults(res.users || []);
+    } catch (e) {
+      console.error('Family search failed', e);
+    } finally {
+      setFamilyLoading(false);
+    }
+  };
+
+  const handleAddFamily = async (memberId) => {
+    try {
+      setFamilyLoading(true);
+      const res = await usersAPI.updateFamily({ action: 'add', memberId });
+      setFamilyMembers(res.family || []);
+      setFamilySearchResults(prev => prev.filter(p => p._id !== memberId));
+      addNotification({ type: 'success', title: 'Added', message: 'Family member added' });
+    } catch (e) {
+      console.error('Add family failed', e);
+      addNotification({ type: 'error', title: 'Failed', message: e.message || 'Could not add family member' });
+    } finally {
+      setFamilyLoading(false);
+    }
+  };
+
+  const handleRemoveFamily = async (memberId) => {
+    try {
+      setFamilyLoading(true);
+      const res = await usersAPI.updateFamily({ action: 'remove', memberId });
+      setFamilyMembers(res.family || []);
+      addNotification({ type: 'success', title: 'Removed', message: 'Family member removed' });
+    } catch (e) {
+      console.error('Remove family failed', e);
+      addNotification({ type: 'error', title: 'Failed', message: e.message || 'Could not remove family member' });
+    } finally {
+      setFamilyLoading(false);
+    }
+  };
 
   // Listen for global 'send-sos' events (dispatched from Sidebar or other places)
   useEffect(() => {
@@ -881,6 +942,51 @@ const DashboardCitizen = () => {
               <div className="flex justify-between items-center py-2">
                 <span className="text-gray-600 dark:text-gray-400 text-sm">Status:</span>
                 <span className="font-medium text-green-600 dark:text-green-400 capitalize">{user?.status || 'Active'}</span>
+              </div>
+              {/* Family Members Management */}
+              <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Family Members</h3>
+                {familyLoading ? (
+                  <p className="text-sm text-gray-500">Loading...</p>
+                ) : (
+                  <div className="space-y-2">
+                    {familyMembers.length === 0 ? (
+                      <p className="text-sm text-gray-500">No family members added yet.</p>
+                    ) : (
+                      familyMembers.map((m) => (
+                        <div key={m._id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900/20 p-2 rounded">
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-white">{m.name}</div>
+                            <div className="text-xs text-gray-500">{m.email}</div>
+                          </div>
+                          <button onClick={() => handleRemoveFamily(m._id)} className="text-red-600 hover:underline text-sm">Remove</button>
+                        </div>
+                      ))
+                    )}
+
+                    <div className="mt-2">
+                      <label className="block text-xs text-gray-500 mb-1">Add family member by name or email</label>
+                      <div className="flex gap-2">
+                        <input value={familySearchQuery} onChange={(e) => setFamilySearchQuery(e.target.value)} placeholder="Search name or email" className="flex-1 px-3 py-2 border rounded bg-white dark:bg-gray-800 text-sm" />
+                        <button onClick={handleFamilySearch} className="btn-primary text-sm">Search</button>
+                      </div>
+
+                      {familySearchResults.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                          {familySearchResults.map(r => (
+                            <div key={r._id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded shadow-sm">
+                              <div>
+                                <div className="font-medium">{r.name}</div>
+                                <div className="text-xs text-gray-500">{r.email}</div>
+                              </div>
+                              <button onClick={() => handleAddFamily(r._id)} className="btn-primary text-sm">Add</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               
               {isEditing && (
