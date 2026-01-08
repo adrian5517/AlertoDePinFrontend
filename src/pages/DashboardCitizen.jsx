@@ -437,49 +437,12 @@ const DashboardCitizen = () => {
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">My Alerts Map</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400">Shows your recent alerts and nearby incidents</p>
         </div>
-        <div className="h-[300px]">
+        <div className="h-[520px] md:h-[640px] lg:h-[760px]">
           <LiveMap alerts={alerts} onMarkerClick={(a) => { setSelectedAlert(a); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="h-full" />
         </div>
       </motion.div>
 
-      {/* Emergency Alert Buttons - Most Important */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="card bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/10 dark:to-orange-900/10 border-2 border-red-200 dark:border-red-800"
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center animate-pulse">
-            <AlertCircle className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              Emergency Alert
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Send immediate help request to responders
-            </p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {alertTypes.map((alertType) => {
-            const Icon = alertType.icon;
-            return (
-              <motion.button
-                key={alertType.type}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSendAlert(alertType)}
-                className={`${alertType.color} text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200`}
-              >
-                <Icon className="w-12 h-12 mx-auto mb-3" />
-                <h3 className="font-bold text-lg mb-2">{alertType.label}</h3>
-                <p className="text-sm opacity-90">{alertType.description}</p>
-              </motion.button>
-            );
-          })}
-        </div>
-      </motion.div>
+      {/* Emergency Alert moved to bottom for easier reach */}
 
       {/* My Recent Alerts - Second Priority */}
       <motion.div
@@ -802,6 +765,45 @@ const DashboardCitizen = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Emergency Alert Buttons - Most Important (moved) */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/10 dark:to-orange-900/10 border-2 border-red-200 dark:border-red-800 mt-6"
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center animate-pulse">
+            <AlertCircle className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+              Emergency Alert
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Send immediate help request to responders
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {alertTypes.map((alertType) => {
+            const Icon = alertType.icon;
+            return (
+              <motion.button
+                key={alertType.type}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleSendAlert(alertType)}
+                className={`${alertType.color} text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200`}
+              >
+                <Icon className="w-12 h-12 mx-auto mb-3" />
+                <h3 className="font-bold text-lg mb-2">{alertType.label}</h3>
+                <p className="text-sm opacity-90">{alertType.description}</p>
+              </motion.button>
+            );
+          })}
+        </div>
+      </motion.div>
 
       {/* Confirmation Modal */}
       {showAlertModal && selectedAlertType && (
