@@ -750,7 +750,7 @@ const DashboardCitizen = () => {
             Quick Actions
           </h2>
           <div className="space-y-3">
-            <button className="w-full btn-danger flex items-center justify-center gap-2 py-4 hover:scale-105 transition-transform">
+            <button onClick={sendSos} className="w-full btn-danger flex items-center justify-center gap-2 py-4 hover:scale-105 transition-transform">
               <AlertCircle className="w-5 h-5" />
               <span className="font-semibold">Emergency SOS (All Services)</span>
             </button>
@@ -897,5 +897,73 @@ const DashboardCitizen = () => {
     </div>
   );
 };
+
+  // Immediate SOS sender (used by Quick Actions SOS button)
+  const sendSos = () => {
+    const sosTitle = 'Emergency SOS';
+    const sosDescription = 'SOS - Immediate assistance required';
+    const sosType = 'police';
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const longitude = position.coords.longitude;
+            const latitude = position.coords.latitude;
+
+            // attempt reverse geocode for readable address
+            let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            try {
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+              );
+              const data = await response.json();
+              if (data.display_name) address = data.display_name;
+            } catch (e) {
+              // ignore, use fallback
+            }
+
+            const alertData = {
+              title: sosTitle,
+              description: sosDescription,
+              type: sosType,
+              priority: 'high',
+              location: {
+                coordinates: {
+                  type: 'Point',
+                  coordinates: [longitude, latitude],
+                },
+                address,
+              },
+              notes: '',
+            };
+
+            // update user location first
+            await usersAPI.updateLocation([longitude, latitude]);
+            await alertsAPI.create(alertData);
+
+            addNotification({
+              type: 'success',
+              title: 'SOS Sent',
+              message: 'Emergency SOS has been sent to responders.',
+            });
+
+            // refresh alerts
+            fetchData();
+          } catch (error) {
+            console.error('SOS send failed:', error);
+            addNotification({ type: 'error', title: 'SOS Failed', message: error.message || 'Please try again.' });
+          }
+        },
+        (error) => {
+          addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
+          console.error('Geolocation error:', error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
+    }
+  };
 
 export default DashboardCitizen;
