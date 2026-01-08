@@ -107,7 +107,15 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           {/* Emergency SOS button */}
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <button className="w-full btn-danger flex items-center justify-center gap-2 py-3 animate-pulse-slow">
+            <button
+              type="button"
+              onClick={() => {
+                // Dispatch a global event that dashboards can listen for
+                try { window.dispatchEvent(new CustomEvent('send-sos')); } catch (e) { console.warn('Dispatch send-sos failed', e); }
+                onClose && onClose();
+              }}
+              className="w-full btn-danger flex items-center justify-center gap-2 py-3 animate-pulse-slow cursor-pointer"
+            >
               <AlertCircle className="w-5 h-5" />
               <span className="font-bold">SEND SOS</span>
             </button>

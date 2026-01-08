@@ -163,6 +163,15 @@ const DashboardCitizen = () => {
     }
   }, [user]);
 
+  // Listen for global 'send-sos' events (dispatched from Sidebar or other places)
+  useEffect(() => {
+    const handler = () => {
+      try { sendSos(); } catch (e) { console.error('send-sos handler error', e); }
+    };
+    window.addEventListener('send-sos', handler);
+    return () => window.removeEventListener('send-sos', handler);
+  }, [user]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -430,83 +439,135 @@ const DashboardCitizen = () => {
     const sosDescription = 'SOS - Immediate assistance required';
     const sosType = 'police';
 
-    if (navigator.geolocation) {
+    const createAndSend = async (longitude, latitude, address) => {
+      const alertData = {
+        title: sosTitle,
+        description: sosDescription,
+        type: sosType,
+        priority: 'high',
+        location: {
+          coordinates: {
+            type: 'Point',
+            coordinates: [longitude, latitude],
+          },
+          address,
+        },
+        notes: '',
+      };
+
+      await usersAPI.updateLocation([longitude, latitude]);
+      await alertsAPI.create(alertData);
+    };
+
+    const handleSendWithCoords = async (longitude, latitude) => {
+      if (!longitude || !latitude) {
+        if (Swal) {
+          Swal.close();
+          Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to determine location.' });
+        } else {
+          addNotification({ type: 'error', title: 'Location Error', message: 'Unable to determine location.' });
+        }
+        return;
+      }
+
       if (Swal) {
         Swal.fire({ title: 'Sending SOS...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
       }
 
+      // try reverse geocode
+      let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+        const data = await response.json();
+        if (data.display_name) address = data.display_name;
+      } catch (e) {
+        // ignore -- fallback to coords
+      }
+
+      try {
+        await createAndSend(longitude, latitude, address);
+        if (Swal) {
+          Swal.close();
+          Swal.fire({ icon: 'success', title: 'SOS Sent', text: 'Emergency SOS has been sent to responders.' });
+        } else {
+          addNotification({ type: 'success', title: 'SOS Sent', message: 'Emergency SOS has been sent to responders.' });
+        }
+        fetchData();
+      } catch (err) {
+        console.error('SOS send failed:', err);
+        if (Swal) {
+          Swal.close();
+          Swal.fire({ icon: 'error', title: 'SOS Failed', text: err.message || 'Please try again.' });
+        } else {
+          addNotification({ type: 'error', title: 'SOS Failed', message: err.message || 'Please try again.' });
+        }
+      }
+    };
+
+    // Primary: browser geolocation
+    if (navigator.geolocation) {
+      // show loading immediately
+      if (Swal) Swal.fire({ title: 'Getting location...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
       navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const longitude = position.coords.longitude;
-            const latitude = position.coords.latitude;
-
-            // attempt reverse geocode for readable address
-            let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-            try {
-              const response = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-              );
-              const data = await response.json();
-              if (data.display_name) address = data.display_name;
-            } catch (e) {
-              // ignore, use fallback
-            }
-
-            const alertData = {
-              title: sosTitle,
-              description: sosDescription,
-              type: sosType,
-              priority: 'high',
-              location: {
-                coordinates: {
-                  type: 'Point',
-                  coordinates: [longitude, latitude],
-                },
-                address,
-              },
-              notes: '',
-            };
-
-            // update user location first
-            await usersAPI.updateLocation([longitude, latitude]);
-            await alertsAPI.create(alertData);
-
-            if (Swal) {
-              Swal.close();
-              Swal.fire({ icon: 'success', title: 'SOS Sent', text: 'Emergency SOS has been sent to responders.' });
-            } else {
-              addNotification({ type: 'success', title: 'SOS Sent', message: 'Emergency SOS has been sent to responders.' });
-            }
-
-            // refresh alerts
-            fetchData();
-          } catch (error) {
-            console.error('SOS send failed:', error);
-            if (Swal) {
-              Swal.close();
-              Swal.fire({ icon: 'error', title: 'SOS Failed', text: error.message || 'Please try again.' });
-            } else {
-              addNotification({ type: 'error', title: 'SOS Failed', message: error.message || 'Please try again.' });
-            }
-          }
+        (position) => {
+          const longitude = position.coords.longitude;
+          const latitude = position.coords.latitude;
+          handleSendWithCoords(longitude, latitude);
         },
-        (error) => {
-          if (window.Swal) {
-            window.Swal.close();
-            window.Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to get your location. Please enable location services.' });
-          } else {
-            addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
+        async (error) => {
+          console.warn('Geolocation error:', error);
+          // If permission denied or other error, try IP fallback
+          try {
+            if (window.Swal) {
+              Swal.close();
+              Swal.fire({ title: 'Using approximate location', text: 'Location permission denied. Attempting approximate location via IP.', icon: 'info' });
+            }
+
+            // IP fallback (approximate)
+            const ipRes = await fetch('https://ipapi.co/json/');
+            const ipData = await ipRes.json();
+            const lat = parseFloat(ipData.latitude || ipData.lat || ipData.latitude);
+            const lon = parseFloat(ipData.longitude || ipData.lon || ipData.longitude);
+
+            if (!isNaN(lat) && !isNaN(lon)) {
+              handleSendWithCoords(lon, lat);
+            } else {
+              if (window.Swal) {
+                Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to get location. Please enable location services.' });
+              } else {
+                addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get location. Please enable location services.' });
+              }
+            }
+          } catch (e) {
+            console.error('IP fallback failed:', e);
+            if (window.Swal) {
+              Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to get your location. Please enable location services.' });
+            } else {
+              addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
+            }
           }
-          console.error('Geolocation error:', error);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      if (window.Swal) {
-        window.Swal.fire({ icon: 'error', title: 'Location Not Supported', text: 'Your browser does not support geolocation.' });
-      } else {
-        addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
+      // no navigator geolocation -- try IP fallback
+      try {
+        if (window.Swal) Swal.fire({ title: 'Using approximate location', text: 'Browser does not support geolocation. Attempting approximate location via IP.', icon: 'info' });
+        const ipRes = await fetch('https://ipapi.co/json/');
+        const ipData = await ipRes.json();
+        const lat = parseFloat(ipData.latitude || ipData.lat || ipData.latitude);
+        const lon = parseFloat(ipData.longitude || ipData.lon || ipData.longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          handleSendWithCoords(lon, lat);
+        } else {
+          if (window.Swal) Swal.fire({ icon: 'error', title: 'Location Not Supported', text: 'Your browser does not support geolocation.' });
+          else addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
+        }
+      } catch (e) {
+        console.error('IP fallback failed:', e);
+        if (window.Swal) Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to determine location.' });
+        else addNotification({ type: 'error', title: 'Location Error', message: 'Unable to determine location.' });
       }
     }
   };
