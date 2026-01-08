@@ -464,7 +464,7 @@ const DashboardCitizen = () => {
 
                 if (Swal) {
                   Swal.close();
-                  const coordLine = `<div class=\"text-xs text-gray-600\">Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}${approximate ? ' — approximate' : ''}</div>`;
+                  const coordLine = `<div class=\"text-xs text-gray-600\">Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} — approximate</div>`;
                   Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style=\"display:flex;flex-direction:column;gap:6px\"><strong>Help is on the way.</strong><span style=\\"color:rgba(15,23,42,0.75)\\">${address || 'Location unavailable'}</span>${coordLine}</div>`, confirmButtonText: 'Done', customClass: premiumClasses });
                 } else {
                   addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent (approximate location).` });
