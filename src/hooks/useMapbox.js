@@ -93,7 +93,13 @@ export const useMapbox = (containerId, options = {}) => {
       markerElement.style.cursor = 'pointer';
     }
 
-    const marker = new mapboxgl.Marker(markerElement, markerOptions)
+    // If a custom element is provided, default the anchor to 'bottom'
+    const markerConstructorOptions = { ...markerOptions };
+    if (element) {
+      markerConstructorOptions.anchor = markerConstructorOptions.anchor || 'bottom';
+    }
+
+    const marker = new mapboxgl.Marker(markerElement, markerConstructorOptions)
       .setLngLat(coordinates)
       .addTo(map);
 

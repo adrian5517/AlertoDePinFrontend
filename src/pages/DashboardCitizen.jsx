@@ -405,7 +405,8 @@ const DashboardCitizen = () => {
 
             if (Swal) {
               Swal.close();
-              Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`, confirmButtonText: 'Done', customClass: premiumClasses });
+              const coordLine = `<div class=\"text-xs text-gray-600\">Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}${position?.coords?.accuracy ? ` (±${Math.round(position.coords.accuracy)}m)` : ''}</div>`;
+              Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style=\"display:flex;flex-direction:column;gap:6px\"><strong>Help is on the way.</strong><span style=\\"color:rgba(15,23,42,0.75)\\">${address || 'Location unavailable'}</span>${coordLine}</div>`, confirmButtonText: 'Done', customClass: premiumClasses });
             } else {
               addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent to ${selectedAlertType.type} responders.` });
             }
@@ -463,7 +464,8 @@ const DashboardCitizen = () => {
 
                 if (Swal) {
                   Swal.close();
-                  Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`, confirmButtonText: 'Done', customClass: premiumClasses });
+                  const coordLine = `<div class=\"text-xs text-gray-600\">Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}${approximate ? ' — approximate' : ''}</div>`;
+                  Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style=\"display:flex;flex-direction:column;gap:6px\"><strong>Help is on the way.</strong><span style=\\"color:rgba(15,23,42,0.75)\\">${address || 'Location unavailable'}</span>${coordLine}</div>`, confirmButtonText: 'Done', customClass: premiumClasses });
                 } else {
                   addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent (approximate location).` });
                 }
@@ -550,7 +552,8 @@ const DashboardCitizen = () => {
 
             if (Swal) {
               Swal.close();
-              Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`, confirmButtonText: 'Done', customClass: premiumClasses });
+              const coordLine = `<div class=\"text-xs text-gray-600\">Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} — approximate</div>`;
+              Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style=\"display:flex;flex-direction:column;gap:6px\"><strong>Help is on the way.</strong><span style=\\"color:rgba(15,23,42,0.75)\\">${address || 'Location unavailable'}</span>${coordLine}</div>`, confirmButtonText: 'Done', customClass: premiumClasses });
             } else {
               addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent (approximate location).` });
             }
@@ -709,7 +712,7 @@ const DashboardCitizen = () => {
       await alertsAPI.create(alertData);
     };
 
-    const handleSendWithCoords = async (longitude, latitude) => {
+    const handleSendWithCoords = async (longitude, latitude, accuracy=null, approximate=false) => {
       if (!longitude || !latitude) {
         if (Swal) {
           Swal.close();
@@ -731,7 +734,7 @@ const DashboardCitizen = () => {
       }
 
       // try reverse geocode
-      let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
         const data = await response.json();
@@ -744,10 +747,11 @@ const DashboardCitizen = () => {
         await createAndSend(longitude, latitude, address);
         if (Swal) {
           Swal.close();
+          const coordLine = `<div class=\"text-xs text-gray-600\">Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}${accuracy ? ` (±${Math.round(accuracy)}m)` : ''}${approximate ? ' — approximate' : ''}</div>`;
           Swal.fire({
             icon: 'success',
             title: 'SOS Sent',
-            html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`,
+            html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span>${coordLine}</div>`,
             confirmButtonText: 'Done',
             customClass: premiumClasses,
           });
@@ -775,7 +779,8 @@ const DashboardCitizen = () => {
         (position) => {
           const longitude = position.coords.longitude;
           const latitude = position.coords.latitude;
-          handleSendWithCoords(longitude, latitude);
+          const accuracy = position.coords.accuracy;
+          handleSendWithCoords(longitude, latitude, accuracy, false);
         },
         async (error) => {
           console.warn('Geolocation error:', error);
@@ -789,7 +794,7 @@ const DashboardCitizen = () => {
               // IP fallback (approximate) using multiple services
               const approx = await getApproxLocationByIP();
               if (approx && !isNaN(approx.lat) && !isNaN(approx.lon)) {
-                handleSendWithCoords(approx.lon, approx.lat);
+                handleSendWithCoords(approx.lon, approx.lat, null, true);
               } else {
                 if (window.Swal) {
                   Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to get location. Please enable location services.', customClass: premiumClasses });
