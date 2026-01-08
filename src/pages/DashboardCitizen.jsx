@@ -182,6 +182,38 @@ const DashboardCitizen = () => {
     }
   };
 
+  // Helper: try multiple IP-based services to get an approximate location
+  const getApproxLocationByIP = async () => {
+    const services = [
+      'https://ipapi.co/json/',
+      'https://ipwho.is/',
+      'https://ipinfo.io/json'
+    ];
+
+    for (const url of services) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) continue;
+        const data = await res.json();
+        // ipapi.co -> latitude, longitude
+        if (data.latitude && data.longitude) return { lat: parseFloat(data.latitude), lon: parseFloat(data.longitude) };
+        if (data.lat && data.lon) return { lat: parseFloat(data.lat), lon: parseFloat(data.lon) };
+        // ipwho.is -> latitude, longitude
+        if (data.success === true && data.latitude && data.longitude) return { lat: parseFloat(data.latitude), lon: parseFloat(data.longitude) };
+        // ipinfo -> loc = "lat,lon"
+        if (data.loc) {
+          const [latStr, lonStr] = data.loc.split(',');
+          const lat = parseFloat(latStr);
+          const lon = parseFloat(lonStr);
+          if (!isNaN(lat) && !isNaN(lon)) return { lat, lon };
+        }
+      } catch (e) {
+        console.warn('IP service failed:', url, e);
+      }
+    }
+    return null;
+  };
+
   const handleFamilySearch = async () => {
     if (!familySearchQuery.trim()) return;
     try {
@@ -379,12 +411,68 @@ const DashboardCitizen = () => {
           }
         },
         (error) => {
-          addNotification({
-            type: 'error',
-            title: 'Location Error',
-            message: 'Unable to get your location. Please enable location services.',
-          });
-          console.error('Geolocation error:', error);
+          console.warn('Geolocation error:', error);
+          // Try IP-based approximate location as a fallback
+          (async () => {
+            try {
+              const approx = await getApproxLocationByIP();
+              if (approx) {
+                const { lat, lon } = approx;
+                // proceed with approximate coords
+                const fakePosition = { coords: { latitude: lat, longitude: lon } };
+                // reuse the same success handler by invoking inline logic
+                const longitude = fakePosition.coords.longitude;
+                const latitude = fakePosition.coords.latitude;
+
+                // Get address from coordinates using reverse geocoding
+                let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                try {
+                  const response = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+                  );
+                  const data = await response.json();
+                  if (data.display_name) address = data.display_name;
+                } catch (geoError) {
+                  console.log('Geocoding failed, using default address:', geoError);
+                }
+
+                const alertData = {
+                  title: alertForm.title,
+                  description: alertForm.description,
+                  type: selectedAlertType.type,
+                  priority: 'high',
+                  location: {
+                    coordinates: {
+                      type: 'Point',
+                      coordinates: [longitude, latitude],
+                    },
+                    address: address,
+                  },
+                  notes: alertForm.notes,
+                };
+
+                try {
+                  await usersAPI.updateLocation([longitude, latitude]);
+                  await alertsAPI.create(alertData);
+                  addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent (approximate location).` });
+                  setShowAlertModal(false);
+                  setSelectedAlertType(null);
+                  setAlertForm({ title: '', description: '', notes: '' });
+                  fetchData();
+                } catch (err) {
+                  console.error('Error sending alert with IP fallback:', err);
+                  addNotification({ type: 'error', title: 'Failed to Send Alert', message: err.message || 'Please try again.' });
+                }
+                return;
+              }
+
+              // If no approx location, show error to user with manual entry option
+              addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
+            } catch (e) {
+              console.error('IP fallback failed:', e);
+              addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
+            }
+          })();
         },
         {
           enableHighAccuracy: true,
@@ -400,6 +488,8 @@ const DashboardCitizen = () => {
       });
     }
   };
+
+  
 
   const handleEditProfile = async () => {
     try {
@@ -605,21 +695,17 @@ const DashboardCitizen = () => {
               Swal.fire({ title: 'Using approximate location', html: 'Location permission denied. Attempting approximate location via IP.', icon: 'info', customClass: premiumClasses, confirmButtonText: 'Continue' });
             }
 
-            // IP fallback (approximate)
-            const ipRes = await fetch('https://ipapi.co/json/');
-            const ipData = await ipRes.json();
-            const lat = parseFloat(ipData.latitude || ipData.lat || ipData.latitude);
-            const lon = parseFloat(ipData.longitude || ipData.lon || ipData.longitude);
-
-            if (!isNaN(lat) && !isNaN(lon)) {
-              handleSendWithCoords(lon, lat);
-            } else {
-              if (window.Swal) {
-                Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to get location. Please enable location services.', customClass: premiumClasses });
+              // IP fallback (approximate) using multiple services
+              const approx = await getApproxLocationByIP();
+              if (approx && !isNaN(approx.lat) && !isNaN(approx.lon)) {
+                handleSendWithCoords(approx.lon, approx.lat);
               } else {
-                addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get location. Please enable location services.' });
+                if (window.Swal) {
+                  Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to get location. Please enable location services.', customClass: premiumClasses });
+                } else {
+                  addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get location. Please enable location services.' });
+                }
               }
-            }
           } catch (e) {
             console.error('IP fallback failed:', e);
             if (window.Swal) {
@@ -635,12 +721,9 @@ const DashboardCitizen = () => {
       // no navigator geolocation -- try IP fallback
       try {
         if (window.Swal) Swal.fire({ title: 'Using approximate location', html: 'Browser does not support geolocation. Attempting approximate location via IP.', icon: 'info', customClass: premiumClasses });
-        const ipRes = await fetch('https://ipapi.co/json/');
-        const ipData = await ipRes.json();
-        const lat = parseFloat(ipData.latitude || ipData.lat || ipData.latitude);
-        const lon = parseFloat(ipData.longitude || ipData.lon || ipData.longitude);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          handleSendWithCoords(lon, lat);
+        const approx = await getApproxLocationByIP();
+        if (approx && !isNaN(approx.lat) && !isNaN(approx.lon)) {
+          handleSendWithCoords(approx.lon, approx.lat);
         } else {
           if (window.Swal) Swal.fire({ icon: 'error', title: 'Location Not Supported', html: 'Your browser does not support geolocation.', customClass: premiumClasses });
           else addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
