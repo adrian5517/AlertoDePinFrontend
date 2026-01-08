@@ -285,11 +285,11 @@ const DashboardCitizen = () => {
       description: 'Medical emergency, injury, or health crisis'
     },
     { 
-      type: 'family', 
-      label: 'Family Alert', 
+      type: 'fire', 
+      label: 'Fire Alert', 
       icon: Users, 
-      color: 'bg-green-600 hover:bg-green-700',
-      description: 'Notify family members of your situation'
+      color: 'bg-orange-600 hover:bg-orange-700',
+      description: 'Notify fire responders and your registered family members'
     },
   ];
 

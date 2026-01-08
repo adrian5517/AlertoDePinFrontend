@@ -24,11 +24,11 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
     }
   }, [selectedAlert]);
 
-  // Get user location
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
+                  <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                    selectedItem.type === 'police' ? 'bg-blue-500 text-white' :
+                    selectedItem.type === 'hospital' ? 'bg-red-500 text-white' :
+                    selectedItem.type === 'fire' ? 'bg-orange-500 text-white' :
+                    'bg-gray-500 text-white'
           setUserLocation({
             lat: position.coords.latitude,
             lng: position.coords.longitude
@@ -249,16 +249,7 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
               <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-orange-600"></div>
             </div>
           `,
-          family: `
-            <div class="relative group">
-              <div class="w-10 h-10 bg-purple-600 rounded-full shadow-lg flex items-center justify-center border-4 border-white transition-transform duration-200 hover:scale-110">
-                <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-                </svg>
-              </div>
-              <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-purple-600"></div>
-            </div>
-          `,
+          /* 'family' pin removed - use 'fire' pin for fire-related alerts */
           default: `
             <div class="relative group">
               <div class="w-10 h-10 bg-indigo-600 rounded-full shadow-lg flex items-center justify-center border-4 border-white transition-transform duration-200 hover:scale-110">
@@ -641,13 +632,13 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
                 </div>
                 <span className="text-xs text-gray-700 dark:text-gray-300">Fire Emergency</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center">
+                <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full bg-orange-500 flex items-center justify-center">
                   <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                    <path d="M12 23s-8-4.5-8-11.8C4 5 8 1 12 1s8 4 8 10.2c0 7.3-8 11.8-8 11.8zm1-18v8l4-4c0 4-2 6-5 8 1-4-2-6-2-6l1-6z"/>
                   </svg>
                 </div>
-                <span className="text-xs text-gray-700 dark:text-gray-300">Family Alert</span>
+                <span className="text-xs text-gray-700 dark:text-gray-300">Fire Alert</span>
               </div>
             </div>
           </div>
