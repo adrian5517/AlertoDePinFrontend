@@ -345,14 +345,25 @@ const DashboardCitizen = () => {
       return;
     }
 
+    const Swal = window.Swal;
+    const premiumClasses = {
+      popup: 'swal2-popup premium',
+      title: 'swal2-title premium-title',
+      htmlContainer: 'swal2-html-container premium-content',
+      confirmButton: 'swal2-confirm btn-premium',
+      cancelButton: 'swal2-cancel btn-secondary',
+    };
+
     // Get user's current location
     if (navigator.geolocation) {
+      if (Swal) Swal.fire({ title: 'Locating you…', allowOutsideClick: false, didOpen: () => Swal.showLoading(), customClass: premiumClasses });
+
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           try {
             const longitude = position.coords.longitude;
             const latitude = position.coords.latitude;
-            
+
             // Get address from coordinates using reverse geocoding
             let address = 'Location from GPS';
             try {
@@ -383,96 +394,112 @@ const DashboardCitizen = () => {
               notes: alertForm.notes,
             };
 
-            // Update user location (correct order: [longitude, latitude])
-            await usersAPI.updateLocation([longitude, latitude]);
+            // Show sending modal
+            if (Swal) {
+              Swal.fire({ title: 'Sending Alert...', html: 'Notifying responders near you', allowOutsideClick: false, didOpen: () => Swal.showLoading(), customClass: premiumClasses });
+            }
 
-            // Create alert
-            const result = await alertsAPI.create(alertData);
-            
-            addNotification({
-              type: 'success',
-              title: `${selectedAlertType.label} Sent!`,
-              message: `Your emergency alert has been sent to ${selectedAlertType.type} responders.`,
-            });
+            // Update user location and create alert
+            await usersAPI.updateLocation([longitude, latitude]);
+            await alertsAPI.create(alertData);
+
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`, confirmButtonText: 'Done', customClass: premiumClasses });
+            } else {
+              addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent to ${selectedAlertType.type} responders.` });
+            }
 
             setShowAlertModal(false);
             setSelectedAlertType(null);
             setAlertForm({ title: '', description: '', notes: '' });
-            
-            // Refresh alerts
             fetchData();
           } catch (error) {
             console.error('Error sending alert:', error);
-            addNotification({
-              type: 'error',
-              title: 'Failed to Send Alert',
-              message: error.message || 'Please try again.',
-            });
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'error', title: 'Failed to Send Alert', html: error.message || 'Please try again.', customClass: premiumClasses, confirmButtonText: 'Close' });
+            } else {
+              addNotification({ type: 'error', title: 'Failed to Send Alert', message: error.message || 'Please try again.' });
+            }
           }
         },
-        (error) => {
+        async (error) => {
           console.warn('Geolocation error:', error);
+
           // Try IP-based approximate location as a fallback
-          (async () => {
-            try {
-              const approx = await getApproxLocationByIP();
-              if (approx) {
-                const { lat, lon } = approx;
-                // proceed with approximate coords
-                const fakePosition = { coords: { latitude: lat, longitude: lon } };
-                // reuse the same success handler by invoking inline logic
-                const longitude = fakePosition.coords.longitude;
-                const latitude = fakePosition.coords.latitude;
+          try {
+            const approx = await getApproxLocationByIP();
+            if (approx) {
+              const longitude = approx.lon;
+              const latitude = approx.lat;
 
-                // Get address from coordinates using reverse geocoding
-                let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-                try {
-                  const response = await fetch(
-                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-                  );
-                  const data = await response.json();
-                  if (data.display_name) address = data.display_name;
-                } catch (geoError) {
-                  console.log('Geocoding failed, using default address:', geoError);
-                }
+              // Get address from coordinates using reverse geocoding
+              let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+              try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                const data = await response.json();
+                if (data.display_name) address = data.display_name;
+              } catch (geoError) {
+                console.log('Geocoding failed, using default address:', geoError);
+              }
 
-                const alertData = {
+              // Show sending modal
+              if (Swal) {
+                Swal.fire({ title: 'Sending Alert...', html: 'Notifying responders near you (approximate location)', allowOutsideClick: false, didOpen: () => Swal.showLoading(), customClass: premiumClasses });
+              }
+
+              try {
+                await usersAPI.updateLocation([longitude, latitude]);
+                await alertsAPI.create({
                   title: alertForm.title,
                   description: alertForm.description,
                   type: selectedAlertType.type,
                   priority: 'high',
-                  location: {
-                    coordinates: {
-                      type: 'Point',
-                      coordinates: [longitude, latitude],
-                    },
-                    address: address,
-                  },
+                  location: { coordinates: { type: 'Point', coordinates: [longitude, latitude] }, address },
                   notes: alertForm.notes,
-                };
+                });
 
-                try {
-                  await usersAPI.updateLocation([longitude, latitude]);
-                  await alertsAPI.create(alertData);
+                if (Swal) {
+                  Swal.close();
+                  Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`, confirmButtonText: 'Done', customClass: premiumClasses });
+                } else {
                   addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent (approximate location).` });
-                  setShowAlertModal(false);
-                  setSelectedAlertType(null);
-                  setAlertForm({ title: '', description: '', notes: '' });
-                  fetchData();
-                } catch (err) {
-                  console.error('Error sending alert with IP fallback:', err);
+                }
+
+                setShowAlertModal(false);
+                setSelectedAlertType(null);
+                setAlertForm({ title: '', description: '', notes: '' });
+                fetchData();
+                return;
+              } catch (err) {
+                console.error('Error sending alert with IP fallback:', err);
+                if (Swal) {
+                  Swal.close();
+                  Swal.fire({ icon: 'error', title: 'Failed to Send Alert', html: err.message || 'Please try again.', customClass: premiumClasses, confirmButtonText: 'Close' });
+                } else {
                   addNotification({ type: 'error', title: 'Failed to Send Alert', message: err.message || 'Please try again.' });
                 }
                 return;
               }
+            }
 
-              // If no approx location, show error to user with manual entry option
-              addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
-            } catch (e) {
-              console.error('IP fallback failed:', e);
+            // If no approx location, show error to user
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to get your location. Please enable location services.', customClass: premiumClasses });
+            } else {
               addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
             }
-          })();
+          } catch (e) {
+            console.error('IP fallback failed:', e);
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to get your location. Please enable location services.', customClass: premiumClasses });
+            } else {
+              addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
+            }
+          }
         },
         {
           enableHighAccuracy: true,
@@ -481,11 +508,74 @@ const DashboardCitizen = () => {
         }
       );
     } else {
-      addNotification({
-        type: 'error',
-        title: 'Location Not Supported',
-        message: 'Your browser does not support geolocation.',
-      });
+      const Swal = window.Swal;
+      const premiumClasses = {
+        popup: 'swal2-popup premium',
+        title: 'swal2-title premium-title',
+        htmlContainer: 'swal2-html-container premium-content',
+        confirmButton: 'swal2-confirm btn-premium',
+        cancelButton: 'swal2-cancel btn-secondary',
+      };
+      if (Swal) Swal.fire({ title: 'Using approximate location', html: 'Browser does not support geolocation. Attempting approximate location via IP.', icon: 'info', customClass: premiumClasses });
+      try {
+        const approx = await getApproxLocationByIP();
+        if (approx && !isNaN(approx.lat) && !isNaN(approx.lon)) {
+          const longitude = approx.lon;
+          const latitude = approx.lat;
+
+          let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+            const data = await response.json();
+            if (data.display_name) address = data.display_name;
+          } catch (geoError) {
+            console.log('Geocoding failed, using default address:', geoError);
+          }
+
+          if (Swal) {
+            Swal.fire({ title: 'Sending Alert...', html: 'Notifying responders near you (approximate location)', allowOutsideClick: false, didOpen: () => Swal.showLoading(), customClass: premiumClasses });
+          }
+
+          try {
+            await usersAPI.updateLocation([longitude, latitude]);
+            await alertsAPI.create({
+              title: alertForm.title,
+              description: alertForm.description,
+              type: selectedAlertType.type,
+              priority: 'high',
+              location: { coordinates: { type: 'Point', coordinates: [longitude, latitude] }, address },
+              notes: alertForm.notes,
+            });
+
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'success', title: `${selectedAlertType.label} Sent!`, html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`, confirmButtonText: 'Done', customClass: premiumClasses });
+            } else {
+              addNotification({ type: 'success', title: `${selectedAlertType.label} Sent!`, message: `Your emergency alert has been sent (approximate location).` });
+            }
+
+            setShowAlertModal(false);
+            setSelectedAlertType(null);
+            setAlertForm({ title: '', description: '', notes: '' });
+            fetchData();
+          } catch (err) {
+            console.error('IP fallback send failed:', err);
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'error', title: 'Failed to Send Alert', html: err.message || 'Please try again.', customClass: premiumClasses });
+            } else {
+              addNotification({ type: 'error', title: 'Failed to Send Alert', message: err.message || 'Please try again.' });
+            }
+          }
+        } else {
+          if (Swal) Swal.fire({ icon: 'error', title: 'Location Not Supported', html: 'Your browser does not support geolocation.', customClass: premiumClasses });
+          else addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
+        }
+      } catch (e) {
+        console.error('IP fallback failed:', e);
+        if (Swal) Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to determine location.', customClass: premiumClasses });
+        else addNotification({ type: 'error', title: 'Location Error', message: 'Unable to determine location.' });
+      }
     }
   };
 
