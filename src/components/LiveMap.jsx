@@ -24,11 +24,11 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
     }
   }, [selectedAlert]);
 
-                  <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
-                    selectedItem.type === 'police' ? 'bg-blue-500 text-white' :
-                    selectedItem.type === 'hospital' ? 'bg-red-500 text-white' :
-                    selectedItem.type === 'fire' ? 'bg-orange-500 text-white' :
-                    'bg-gray-500 text-white'
+  // Get user's current location once
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
           setUserLocation({
             lat: position.coords.latitude,
             lng: position.coords.longitude
