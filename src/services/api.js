@@ -23,10 +23,22 @@ const apiCall = async (endpoint, options = {}) => {
   }
 
   try {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    // Ensure object bodies are JSON-stringified when Content-Type is application/json
+    const fetchOptions = {
       ...options,
       headers,
-    });
+    };
+
+    if (fetchOptions.body && typeof fetchOptions.body === 'object' && !(fetchOptions.body instanceof FormData)) {
+      try {
+        fetchOptions.body = JSON.stringify(fetchOptions.body);
+      } catch (e) {
+        // if stringify fails, leave as-is and let fetch/body-parser handle it
+        console.warn('Failed to stringify request body:', e);
+      }
+    }
+
+    const response = await fetch(`${API_URL}${endpoint}`, fetchOptions);
 
     const data = await response.json();
 
