@@ -838,7 +838,7 @@ const DashboardCitizen = () => {
             Quick Actions
           </h2>
           <div className="space-y-3">
-            <button onClick={sendSos} className="w-full btn-danger flex items-center justify-center gap-2 py-4 hover:scale-105 transition-transform">
+            <button type="button" onClick={sendSos} style={{ pointerEvents: 'auto' }} className="w-full btn-danger flex items-center justify-center gap-2 py-4 hover:scale-105 transition-transform cursor-pointer relative z-50">
               <AlertCircle className="w-5 h-5" />
               <span className="font-semibold">Emergency SOS (All Services)</span>
             </button>
