@@ -423,6 +423,94 @@ const DashboardCitizen = () => {
     }
   };
 
+  // Immediate SOS sender (used by Quick Actions SOS button)
+  const sendSos = () => {
+    const Swal = window.Swal;
+    const sosTitle = 'Emergency SOS';
+    const sosDescription = 'SOS - Immediate assistance required';
+    const sosType = 'police';
+
+    if (navigator.geolocation) {
+      if (Swal) {
+        Swal.fire({ title: 'Sending SOS...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const longitude = position.coords.longitude;
+            const latitude = position.coords.latitude;
+
+            // attempt reverse geocode for readable address
+            let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            try {
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+              );
+              const data = await response.json();
+              if (data.display_name) address = data.display_name;
+            } catch (e) {
+              // ignore, use fallback
+            }
+
+            const alertData = {
+              title: sosTitle,
+              description: sosDescription,
+              type: sosType,
+              priority: 'high',
+              location: {
+                coordinates: {
+                  type: 'Point',
+                  coordinates: [longitude, latitude],
+                },
+                address,
+              },
+              notes: '',
+            };
+
+            // update user location first
+            await usersAPI.updateLocation([longitude, latitude]);
+            await alertsAPI.create(alertData);
+
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'success', title: 'SOS Sent', text: 'Emergency SOS has been sent to responders.' });
+            } else {
+              addNotification({ type: 'success', title: 'SOS Sent', message: 'Emergency SOS has been sent to responders.' });
+            }
+
+            // refresh alerts
+            fetchData();
+          } catch (error) {
+            console.error('SOS send failed:', error);
+            if (Swal) {
+              Swal.close();
+              Swal.fire({ icon: 'error', title: 'SOS Failed', text: error.message || 'Please try again.' });
+            } else {
+              addNotification({ type: 'error', title: 'SOS Failed', message: error.message || 'Please try again.' });
+            }
+          }
+        },
+        (error) => {
+          if (window.Swal) {
+            window.Swal.close();
+            window.Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to get your location. Please enable location services.' });
+          } else {
+            addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
+          }
+          console.error('Geolocation error:', error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      if (window.Swal) {
+        window.Swal.fire({ icon: 'error', title: 'Location Not Supported', text: 'Your browser does not support geolocation.' });
+      } else {
+        addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
+      }
+    }
+  };
+
   return (
     <div className="space-y-6">
       <DashboardHeader
@@ -897,73 +985,5 @@ const DashboardCitizen = () => {
     </div>
   );
 };
-
-  // Immediate SOS sender (used by Quick Actions SOS button)
-  const sendSos = () => {
-    const sosTitle = 'Emergency SOS';
-    const sosDescription = 'SOS - Immediate assistance required';
-    const sosType = 'police';
-
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const longitude = position.coords.longitude;
-            const latitude = position.coords.latitude;
-
-            // attempt reverse geocode for readable address
-            let address = user?.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-            try {
-              const response = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-              );
-              const data = await response.json();
-              if (data.display_name) address = data.display_name;
-            } catch (e) {
-              // ignore, use fallback
-            }
-
-            const alertData = {
-              title: sosTitle,
-              description: sosDescription,
-              type: sosType,
-              priority: 'high',
-              location: {
-                coordinates: {
-                  type: 'Point',
-                  coordinates: [longitude, latitude],
-                },
-                address,
-              },
-              notes: '',
-            };
-
-            // update user location first
-            await usersAPI.updateLocation([longitude, latitude]);
-            await alertsAPI.create(alertData);
-
-            addNotification({
-              type: 'success',
-              title: 'SOS Sent',
-              message: 'Emergency SOS has been sent to responders.',
-            });
-
-            // refresh alerts
-            fetchData();
-          } catch (error) {
-            console.error('SOS send failed:', error);
-            addNotification({ type: 'error', title: 'SOS Failed', message: error.message || 'Please try again.' });
-          }
-        },
-        (error) => {
-          addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
-          console.error('Geolocation error:', error);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
-      addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
-    }
-  };
 
 export default DashboardCitizen;
