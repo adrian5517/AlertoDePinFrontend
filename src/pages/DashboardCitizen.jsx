@@ -433,8 +433,16 @@ const DashboardCitizen = () => {
   };
 
   // Immediate SOS sender (used by Quick Actions SOS button)
-  const sendSos = () => {
+  const sendSos = async () => {
     const Swal = window.Swal;
+    const premiumClasses = {
+      popup: 'swal2-popup premium',
+      title: 'swal2-title premium-title',
+      htmlContainer: 'swal2-html-container premium-content',
+      confirmButton: 'swal2-confirm btn-premium',
+      cancelButton: 'swal2-cancel btn-secondary',
+    };
+
     const sosTitle = 'Emergency SOS';
     const sosDescription = 'SOS - Immediate assistance required';
     const sosType = 'police';
@@ -463,7 +471,7 @@ const DashboardCitizen = () => {
       if (!longitude || !latitude) {
         if (Swal) {
           Swal.close();
-          Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to determine location.' });
+          Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to determine location.', customClass: premiumClasses, confirmButtonText: 'Close' });
         } else {
           addNotification({ type: 'error', title: 'Location Error', message: 'Unable to determine location.' });
         }
@@ -471,7 +479,13 @@ const DashboardCitizen = () => {
       }
 
       if (Swal) {
-        Swal.fire({ title: 'Sending SOS...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        Swal.fire({
+          title: 'Sending SOS...',
+          html: '<div style="display:flex;flex-direction:column;gap:6px"><strong>Sending secure alert</strong><span style="color:rgba(15,23,42,0.65)">We are notifying responders near you.</span></div>',
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading(),
+          customClass: premiumClasses,
+        });
       }
 
       // try reverse geocode
@@ -488,7 +502,13 @@ const DashboardCitizen = () => {
         await createAndSend(longitude, latitude, address);
         if (Swal) {
           Swal.close();
-          Swal.fire({ icon: 'success', title: 'SOS Sent', text: 'Emergency SOS has been sent to responders.' });
+          Swal.fire({
+            icon: 'success',
+            title: 'SOS Sent',
+            html: `<div style="display:flex;flex-direction:column;gap:6px"><strong>Help is on the way.</strong><span style=\"color:rgba(15,23,42,0.75)\">${address || 'Location unavailable'}</span></div>`,
+            confirmButtonText: 'Done',
+            customClass: premiumClasses,
+          });
         } else {
           addNotification({ type: 'success', title: 'SOS Sent', message: 'Emergency SOS has been sent to responders.' });
         }
@@ -497,7 +517,7 @@ const DashboardCitizen = () => {
         console.error('SOS send failed:', err);
         if (Swal) {
           Swal.close();
-          Swal.fire({ icon: 'error', title: 'SOS Failed', text: err.message || 'Please try again.' });
+          Swal.fire({ icon: 'error', title: 'SOS Failed', html: err.message || 'Please try again.', customClass: premiumClasses, confirmButtonText: 'Close' });
         } else {
           addNotification({ type: 'error', title: 'SOS Failed', message: err.message || 'Please try again.' });
         }
@@ -507,7 +527,7 @@ const DashboardCitizen = () => {
     // Primary: browser geolocation
     if (navigator.geolocation) {
       // show loading immediately
-      if (Swal) Swal.fire({ title: 'Getting location...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      if (Swal) Swal.fire({ title: 'Locating you…', allowOutsideClick: false, didOpen: () => Swal.showLoading(), customClass: premiumClasses });
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -521,7 +541,7 @@ const DashboardCitizen = () => {
           try {
             if (window.Swal) {
               Swal.close();
-              Swal.fire({ title: 'Using approximate location', text: 'Location permission denied. Attempting approximate location via IP.', icon: 'info' });
+              Swal.fire({ title: 'Using approximate location', html: 'Location permission denied. Attempting approximate location via IP.', icon: 'info', customClass: premiumClasses, confirmButtonText: 'Continue' });
             }
 
             // IP fallback (approximate)
@@ -534,7 +554,7 @@ const DashboardCitizen = () => {
               handleSendWithCoords(lon, lat);
             } else {
               if (window.Swal) {
-                Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to get location. Please enable location services.' });
+                Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to get location. Please enable location services.', customClass: premiumClasses });
               } else {
                 addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get location. Please enable location services.' });
               }
@@ -542,7 +562,7 @@ const DashboardCitizen = () => {
           } catch (e) {
             console.error('IP fallback failed:', e);
             if (window.Swal) {
-              Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to get your location. Please enable location services.' });
+              Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to get your location. Please enable location services.', customClass: premiumClasses });
             } else {
               addNotification({ type: 'error', title: 'Location Error', message: 'Unable to get your location. Please enable location services.' });
             }
@@ -553,7 +573,7 @@ const DashboardCitizen = () => {
     } else {
       // no navigator geolocation -- try IP fallback
       try {
-        if (window.Swal) Swal.fire({ title: 'Using approximate location', text: 'Browser does not support geolocation. Attempting approximate location via IP.', icon: 'info' });
+        if (window.Swal) Swal.fire({ title: 'Using approximate location', html: 'Browser does not support geolocation. Attempting approximate location via IP.', icon: 'info', customClass: premiumClasses });
         const ipRes = await fetch('https://ipapi.co/json/');
         const ipData = await ipRes.json();
         const lat = parseFloat(ipData.latitude || ipData.lat || ipData.latitude);
@@ -561,12 +581,12 @@ const DashboardCitizen = () => {
         if (!isNaN(lat) && !isNaN(lon)) {
           handleSendWithCoords(lon, lat);
         } else {
-          if (window.Swal) Swal.fire({ icon: 'error', title: 'Location Not Supported', text: 'Your browser does not support geolocation.' });
+          if (window.Swal) Swal.fire({ icon: 'error', title: 'Location Not Supported', html: 'Your browser does not support geolocation.', customClass: premiumClasses });
           else addNotification({ type: 'error', title: 'Location Not Supported', message: 'Your browser does not support geolocation.' });
         }
       } catch (e) {
         console.error('IP fallback failed:', e);
-        if (window.Swal) Swal.fire({ icon: 'error', title: 'Location Error', text: 'Unable to determine location.' });
+        if (window.Swal) Swal.fire({ icon: 'error', title: 'Location Error', html: 'Unable to determine location.', customClass: premiumClasses });
         else addNotification({ type: 'error', title: 'Location Error', message: 'Unable to determine location.' });
       }
     }
