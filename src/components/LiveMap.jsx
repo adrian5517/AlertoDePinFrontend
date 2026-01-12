@@ -11,6 +11,8 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
   const [selectedType, setSelectedType] = useState(null); // 'alert' or 'user'
   const [showingRoute, setShowingRoute] = useState(false);
   const markersRef = useRef([]); // Track all markers
+  const [legendVisible, setLegendVisible] = useState(true);
+  const [popup, setPopup] = useState({ visible: false, message: '' });
 
   // When selectedAlert prop changes, update selectedItem and show route
   useEffect(() => {
@@ -172,11 +174,11 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
     // Throttle rapid updates to avoid re-creating markers too often
     if (!markersRef.current) markersRef.current = [];
     const now = Date.now();
-    if (markersRef.lastUpdate && now - markersRef.lastUpdate < 400) {
+    if (markersRef.current.lastUpdate && now - markersRef.current.lastUpdate < 400) {
       // skip frequent updates
       return;
     }
-    markersRef.lastUpdate = now;
+    markersRef.current.lastUpdate = now;
 
     clearMarkers();
     markersRef.current = [];
@@ -592,11 +594,26 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
       )}
       
       {/* Enhanced legend with online users */}
-      <div className="absolute bottom-4 left-4 glassmorphism p-4 rounded-lg shadow-xl max-w-xs">
-        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-300 dark:border-gray-600">
-          <MapPin className="w-4 h-4 text-primary-600" />
-          <h4 className="font-semibold text-sm text-gray-900 dark:text-white">Map Legend</h4>
-        </div>
+      {legendVisible && (
+        <div className="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 glassmorphism p-3 sm:p-4 rounded-lg shadow-xl w-[92%] sm:max-w-xs md:max-w-sm">
+          <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-300 dark:border-gray-600">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-primary-600" />
+              <h4 className="font-semibold text-sm text-gray-900 dark:text-white">Map Legend</h4>
+            </div>
+            <button
+              aria-label="Close legend"
+              onClick={() => {
+                setLegendVisible(false);
+                setPopup({ visible: true, message: 'Legend hidden' });
+                setTimeout(() => setPopup({ visible: false, message: '' }), 3000);
+              }}
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 touch-manipulation"
+              style={{ marginLeft: 6 }}
+            >
+              <X className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
         
         <div className="space-y-3">
           <div>
@@ -676,7 +693,27 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
           </div>
         </div>
       </div>
+      
+      {/* Popup notification (temporary) */}
+      {popup.visible && (
+        <div className="absolute left-1/2 top-4 transform -translate-x-1/2 pointer-events-none z-[2000]">
+          <div className="bg-gray-900 text-white text-sm px-4 py-2 rounded shadow-lg pointer-events-auto max-w-[90%] sm:max-w-md">
+            {popup.message}
+          </div>
+        </div>
+      )}
 
+      {/* Small show-legend button when legend is hidden */}
+      {!legendVisible && (
+        <div className="absolute bottom-4 left-4 z-[1500]">
+          <button
+            onClick={() => setLegendVisible(true)}
+            className="glassmorphism px-3 py-2 rounded-lg shadow-xl text-sm font-semibold text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            Show Legend
+          </button>
+        </div>
+      )}
       {/* Stats badge */}
       <div className="absolute top-4 left-4 glassmorphism rounded-lg shadow-xl overflow-hidden">
         <div className="px-4 py-2 space-y-1">
