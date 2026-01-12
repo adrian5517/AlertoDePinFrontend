@@ -72,8 +72,16 @@ const Navbar = ({ toggleSidebar }) => {
                   animate={{ opacity: 1, y: 0 }}
                   className="absolute right-0 mt-2 w-80 glassmorphism rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto"
                 >
-                  <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                     <h3 className="font-semibold text-gray-900 dark:text-white">Notifications</h3>
+                    <div>
+                      <button
+                        onClick={() => clearNotifications()}
+                        className="text-xs text-gray-500 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
                   {notifications.length === 0 ? (
                     <div className="p-4 text-center text-gray-500">

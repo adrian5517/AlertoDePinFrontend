@@ -19,15 +19,9 @@ const colorMap = {
 
 const NotificationPanel = () => {
   const { notifications, removeNotification } = useNotificationStore();
-  console.log('[NotificationPanel] Current notifications:', notifications);
-
-  // Auto-dismiss notifications after 5 seconds
-  useEffect(() => {
-    const timers = notifications.map((notif) =>
-      setTimeout(() => removeNotification(notif.id), 5000)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [notifications]);
+  // Note: notifications persist in the store so users can open the notifications
+  // dropdown (in `Navbar`) and review them. Individual toasts can still be
+  // dismissed by clicking the X button which calls `removeNotification`.
 
   return (
     <div className="fixed top-20 right-4 z-50 space-y-2 max-w-sm w-full">
