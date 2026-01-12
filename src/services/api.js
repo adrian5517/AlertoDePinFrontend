@@ -40,10 +40,18 @@ const apiCall = async (endpoint, options = {}) => {
 
     const response = await fetch(`${API_URL}${endpoint}`, fetchOptions);
 
-    const data = await response.json();
+    // Try to parse JSON body; if parsing fails, fallback to null
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (e) {
+      // no JSON body or invalid JSON
+      data = null;
+    }
 
     if (!response.ok) {
-      throw new Error(data.message || 'Something went wrong');
+      const errMsg = (data && data.message) ? data.message : response.statusText || 'Something went wrong';
+      throw new Error(errMsg);
     }
 
     return data;
@@ -82,7 +90,9 @@ export const alertsAPI = {
   getAll: async (filters = {}) => {
     const queryParams = new URLSearchParams(filters).toString();
     const data = await apiCall(`/alerts${queryParams ? `?${queryParams}` : ''}`);
-    return data;
+    // Normalize various backend shapes to always provide an `alerts` array
+    const alertsArray = data?.alerts || data?.data || (Array.isArray(data) ? data : []);
+    return { alerts: alertsArray, raw: data };
   },
 
   getById: async (id) => {
