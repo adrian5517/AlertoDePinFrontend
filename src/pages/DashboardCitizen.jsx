@@ -364,14 +364,13 @@ const DashboardCitizen = () => {
             const longitude = position.coords.longitude;
             const latitude = position.coords.latitude;
 
-            // Get address from coordinates using reverse geocoding
+            // Get address from coordinates using reverse geocoding via backend proxy
             let address = 'Location from GPS';
             try {
-              const response = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-              );
-              const data = await response.json();
-              if (data.display_name) {
+              const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
+              const result = await response.json();
+              const data = result?.data || result;
+              if (data && data.display_name) {
                 address = data.display_name;
               }
             } catch (geoError) {
@@ -435,13 +434,14 @@ const DashboardCitizen = () => {
               const longitude = approx.lon;
               const latitude = approx.lat;
 
-              // Get address from coordinates using reverse geocoding
+              // Get address from coordinates using reverse geocoding via backend proxy
               // Prefer coordinate string as fallback (avoid reusing static profile address)
               let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (approximate)`;
               try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-                const data = await response.json();
-                if (data.display_name) address = `${data.display_name} (approximate)`;
+                const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
+                const result = await response.json();
+                const data = result?.data || result;
+                if (data && data.display_name) address = `${data.display_name} (approximate)`;
               } catch (geoError) {
                 console.log('Geocoding failed, using default address:', geoError);
               }
@@ -528,9 +528,10 @@ const DashboardCitizen = () => {
 
           let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (approximate)`;
           try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-            const data = await response.json();
-            if (data.display_name) address = `${data.display_name} (approximate)`;
+            const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
+            const result = await response.json();
+            const data = result?.data || result;
+            if (data && data.display_name) address = `${data.display_name} (approximate)`;
           } catch (geoError) {
             console.log('Geocoding failed, using default address:', geoError);
           }
@@ -733,12 +734,13 @@ const DashboardCitizen = () => {
         });
       }
 
-      // try reverse geocode
+      // try reverse geocode via backend proxy
       let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
       try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-        const data = await response.json();
-        if (data.display_name) address = data.display_name;
+        const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
+        const result = await response.json();
+        const data = result?.data || result;
+        if (data && data.display_name) address = data.display_name;
       } catch (e) {
         // ignore -- fallback to coords
       }
