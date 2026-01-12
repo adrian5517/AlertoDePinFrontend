@@ -634,11 +634,11 @@ void setup() {
   }
 
   setupWiFi();
-  // If connected to WiFi as STA, start local web server for login/config
-  if (WiFi.status() == WL_CONNECTED) {
-    startLocalWebServer();
-    lcd.clear(); lcd.print("Portal: "); lcd.setCursor(0,1); lcd.print(WiFi.localIP().toString()); delay(1200); lcd.clear();
-  }
+  // Start local web server so device is reachable both in STA and AP (portal) modes.
+  // This ensures users can access the device IP (e.g., 192.168.4.1 when in AP)
+  startLocalWebServer();
+  // show the portal IP briefly on the LCD
+  lcd.clear(); lcd.print("Portal: "); lcd.setCursor(0,1); lcd.print(WiFi.localIP().toString()); delay(1200); lcd.clear();
 }
 
 // ---------------------- LOOP --------------------

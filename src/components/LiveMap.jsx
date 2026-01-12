@@ -693,6 +693,7 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
           </div>
         </div>
       </div>
+      )}
       
       {/* Popup notification (temporary) */}
       {popup.visible && (
