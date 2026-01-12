@@ -214,6 +214,33 @@ const DashboardCitizen = () => {
     return null;
   };
 
+  // Robust reverse geocode helper that tolerates non-JSON/error responses
+  const reverseGeocodeFetch = async (lat, lon) => {
+    try {
+      const resp = await fetch(`/api/geocode/reverse?lat=${lat}&lon=${lon}`);
+      // If server returned non-2xx, try to read text for logging and return null
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => '');
+        console.warn('Geocode proxy returned non-OK:', resp.status, txt.substring ? txt.substring(0, 300) : txt);
+        return null;
+      }
+
+      const ct = resp.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const txt = await resp.text().catch(() => '');
+        console.warn('Geocode proxy returned non-JSON payload (first 300 chars):', txt.substring ? txt.substring(0, 300) : txt);
+        return null;
+      }
+
+      const result = await resp.json();
+      // our proxy returns { ok, source, data } so normalize
+      return result?.data || result || null;
+    } catch (err) {
+      console.warn('reverseGeocodeFetch error', err && err.message);
+      return null;
+    }
+  };
+
   const handleFamilySearch = async () => {
     if (!familySearchQuery.trim()) return;
     try {
@@ -367,12 +394,8 @@ const DashboardCitizen = () => {
             // Get address from coordinates using reverse geocoding via backend proxy
             let address = 'Location from GPS';
             try {
-              const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
-              const result = await response.json();
-              const data = result?.data || result;
-              if (data && data.display_name) {
-                address = data.display_name;
-              }
+              const data = await reverseGeocodeFetch(latitude, longitude);
+              if (data && data.display_name) address = data.display_name;
             } catch (geoError) {
               console.log('Geocoding failed, using default address:', geoError);
               address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
@@ -438,9 +461,7 @@ const DashboardCitizen = () => {
               // Prefer coordinate string as fallback (avoid reusing static profile address)
               let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (approximate)`;
               try {
-                const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
-                const result = await response.json();
-                const data = result?.data || result;
+                const data = await reverseGeocodeFetch(latitude, longitude);
                 if (data && data.display_name) address = `${data.display_name} (approximate)`;
               } catch (geoError) {
                 console.log('Geocoding failed, using default address:', geoError);
@@ -506,7 +527,7 @@ const DashboardCitizen = () => {
         },
         {
           enableHighAccuracy: true,
-          timeout: 10000,
+          timeout: 20000,
           maximumAge: 0,
         }
       );
@@ -528,9 +549,7 @@ const DashboardCitizen = () => {
 
           let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (approximate)`;
           try {
-            const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
-            const result = await response.json();
-            const data = result?.data || result;
+            const data = await reverseGeocodeFetch(latitude, longitude);
             if (data && data.display_name) address = `${data.display_name} (approximate)`;
           } catch (geoError) {
             console.log('Geocoding failed, using default address:', geoError);
@@ -737,9 +756,7 @@ const DashboardCitizen = () => {
       // try reverse geocode via backend proxy
       let address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
       try {
-        const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
-        const result = await response.json();
-        const data = result?.data || result;
+        const data = await reverseGeocodeFetch(latitude, longitude);
         if (data && data.display_name) address = data.display_name;
       } catch (e) {
         // ignore -- fallback to coords
@@ -813,7 +830,7 @@ const DashboardCitizen = () => {
             }
           }
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
       );
     } else {
       // no navigator geolocation -- try IP fallback
