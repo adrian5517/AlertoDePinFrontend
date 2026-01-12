@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { motion } from 'framer-motion';
 import { Activity, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import DashboardHeader from '../components/DashboardHeader';
-import LiveMap from '../components/LiveMap';
+const LiveMap = lazy(() => import('../components/LiveMap'));
 import AlertCard from '../components/AlertCard';
 import { useAuth } from '../context/AuthContext';
 import { useNotificationStore } from '../context/store';
@@ -186,13 +186,15 @@ const DashboardHospital = () => {
                 Real-time tracking of medical emergencies in your coverage area
               </p>
             </div>
-            <LiveMap
-              alerts={alerts}
-              onlineUsers={onlineUsers}
-              onMarkerClick={setSelectedAlert}
-              selectedAlert={selectedAlert}
-              className="h-[500px]"
-            />
+            <Suspense fallback={<div className="h-[500px] flex items-center justify-center">Loading map…</div>}>
+              <LiveMap
+                alerts={alerts}
+                onlineUsers={onlineUsers}
+                onMarkerClick={setSelectedAlert}
+                selectedAlert={selectedAlert}
+                className="h-[500px]"
+              />
+            </Suspense>
           </div>
         </motion.div>
 

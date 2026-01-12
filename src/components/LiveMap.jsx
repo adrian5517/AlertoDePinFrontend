@@ -169,16 +169,21 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
   useEffect(() => {
     if (!map) return;
 
-    console.log('LiveMap - Received alerts:', alerts);
-    console.log('LiveMap - Received online users:', onlineUsers);
+    // Throttle rapid updates to avoid re-creating markers too often
+    if (!markersRef.current) markersRef.current = [];
+    const now = Date.now();
+    if (markersRef.lastUpdate && now - markersRef.lastUpdate < 400) {
+      // skip frequent updates
+      return;
+    }
+    markersRef.lastUpdate = now;
 
     clearMarkers();
     markersRef.current = [];
 
     // Alert markers
     alerts.forEach((alert) => {
-      console.log('Processing alert:', alert);
-      console.log('Alert location:', alert.location);
+      // process alert
       
       // Handle different coordinate formats
       let coords = null;
@@ -206,13 +211,6 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
       
       // Skip if no valid coordinates
       if (!coords || !coords.lat || !coords.lng) {
-        console.warn('Alert has no valid coordinates:', alert);
-        console.warn('Checked paths:', {
-          'alert.coordinates': alert.coordinates,
-          'alert.location': alert.location,
-          'alert.location?.coordinates': alert.location?.coordinates,
-          'alert.location?.coordinates?.coordinates': alert.location?.coordinates?.coordinates
-        });
         return;
       }
       
@@ -283,9 +281,7 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
           }
         });
 
-        const marker = addMarker([coords.lng, coords.lat], {
-          element: el,
-        });
+        const marker = addMarker([coords.lng, coords.lat], { element: el });
         markersRef.current.push(marker);
     });
 
@@ -363,9 +359,7 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
           el.style.zIndex = '1000';
         });
 
-        const marker = addMarker([coords.lng, coords.lat], {
-          element: el,
-        });
+        const marker = addMarker([coords.lng, coords.lat], { element: el });
         markersRef.current.push(marker);
       }
     });

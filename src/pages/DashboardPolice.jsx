@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield,
@@ -13,7 +13,7 @@ import {
   MapPin
 } from 'lucide-react';
 import DashboardHeader from '../components/DashboardHeader';
-import LiveMap from '../components/LiveMap';
+const LiveMap = lazy(() => import('../components/LiveMap'));
 import AlertCard from '../components/AlertCard';
 import ConfirmModal from '../components/ConfirmModal';
 import ResolveModal from '../components/ResolveModal';
@@ -45,7 +45,6 @@ const DashboardPolice = () => {
       try {
         setLoading(true);
         const response = await alertsAPI.getAll();
-        console.log('Police Dashboard - All alerts:', response);
 
         const alertsData = response.alerts || response.data || [];
         const policeAlerts = alertsData.filter(
@@ -55,7 +54,7 @@ const DashboardPolice = () => {
             alert.status !== 'cancelled'
         );
 
-        console.log('Police Dashboard - Filtered alerts:', policeAlerts);
+        // filtered alerts ready
         setAlerts(policeAlerts);
       } catch (error) {
         console.error('Error fetching alerts:', error);
@@ -85,7 +84,7 @@ const DashboardPolice = () => {
 
     socket.on('connect', () => {
       if (!isSubscribed) return;
-      console.log('Police dashboard connected to Socket.IO');
+      // connected to Socket.IO
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -100,7 +99,7 @@ const DashboardPolice = () => {
               userType: user.accountType || 'police',
               name: user.name || 'Police Officer'
             };
-            console.log('Emitting user-online:', userData);
+            // emit user-online
             socket.emit('user-online', userData);
           },
           (error) => console.error('Geolocation error:', error),
@@ -131,14 +130,14 @@ const DashboardPolice = () => {
     // Real-time new alerts
     socket.on('new-alert', (alert) => {
       if (!isSubscribed) return;
-      console.log('Police Dashboard - Received new alert via Socket:', alert);
+      // received new alert via socket
 
       if (
         alert.type === 'police' &&
         alert.status !== 'resolved' &&
         alert.status !== 'cancelled'
       ) {
-        console.log('Adding police alert to list');
+        // add police alert to list
         setAlerts((prev) => [alert, ...prev]);
         addNotification(
           `New police alert: ${alert.description || 'Emergency'}`,
@@ -352,13 +351,15 @@ const DashboardPolice = () => {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
               </div>
             ) : (
-              <LiveMap
-                alerts={alerts}
-                onlineUsers={onlineUsers}
-                onMarkerClick={handleMarkerClick}
-                selectedAlert={selectedAlert}
-                className="h-[500px]"
-              />
+              <Suspense fallback={<div className="h-[500px] flex items-center justify-center">Loading map…</div>}>
+                <LiveMap
+                  alerts={alerts}
+                  onlineUsers={onlineUsers}
+                  onMarkerClick={handleMarkerClick}
+                  selectedAlert={selectedAlert}
+                  className="h-[500px]"
+                />
+              </Suspense>
             )}
           </div>
         </motion.div>

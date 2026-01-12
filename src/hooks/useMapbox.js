@@ -9,7 +9,7 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 export const useMapbox = (containerId, options = {}) => {
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
-  const [markers, setMarkers] = useState([]);
+  const markersRef = useRef([]);
   const { darkMode } = useAuth();
 
   useEffect(() => {
@@ -109,13 +109,13 @@ export const useMapbox = (containerId, options = {}) => {
       );
     }
 
-    setMarkers(prev => [...prev, marker]);
+    markersRef.current.push(marker);
     return marker;
   };
 
   const clearMarkers = () => {
-    markers.forEach(marker => marker.remove());
-    setMarkers([]);
+    (markersRef.current || []).forEach(marker => marker.remove());
+    markersRef.current = [];
   };
 
   const flyTo = (coordinates, zoom = 14) => {
@@ -128,6 +128,6 @@ export const useMapbox = (containerId, options = {}) => {
     addMarker,
     clearMarkers,
     flyTo,
-    markers,
+    markers: markersRef,
   };
 };

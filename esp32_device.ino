@@ -17,7 +17,7 @@ TinyGPSPlus gps;
 HardwareSerial GPS_Serial(1);
 
 // ---------------------- SERVER -------------------
-String serverURL = "https://alertodepinbackend.onrender.com/api/alerts/iot";
+String serverURL = "https://alertodepinbackend.onrender.com/api/alerts/iot-protected";
 // Explicit auth base to avoid brittle string manipulation
 const String AUTH_BASE = "https://alertodepinbackend.onrender.com/api/auth";
 

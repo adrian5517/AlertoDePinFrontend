@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, Clock, CheckCircle, TrendingUp, Shield, Activity, Users, Edit2, Save, X, Lock, MapPin } from 'lucide-react';
 import DashboardHeader from '../components/DashboardHeader';
-import LiveMap from '../components/LiveMap';
+const LiveMap = lazy(() => import('../components/LiveMap'));
 import AlertCard from '../components/AlertCard';
 import { useAuth } from '../context/AuthContext';
 import { useNotificationStore } from '../context/store';
@@ -847,7 +847,9 @@ const DashboardCitizen = () => {
           <p className="text-sm text-gray-600 dark:text-gray-400">Shows your recent alerts and nearby incidents</p>
         </div>
         <div className="h-[520px] md:h-[640px] lg:h-[760px]">
-          <LiveMap alerts={alerts} onMarkerClick={(a) => { setSelectedAlert(a); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="h-full" />
+          <Suspense fallback={<div className="h-full flex items-center justify-center">Loading map…</div>}>
+            <LiveMap alerts={alerts} onMarkerClick={(a) => { setSelectedAlert(a); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="h-full" />
+          </Suspense>
         </div>
       </motion.div>
 
