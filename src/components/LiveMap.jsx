@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMapbox } from '../hooks/useMapbox';
 import { Navigation, MapPin, Clock, X, User, Users } from 'lucide-react';
-import mapboxgl from 'mapbox-gl';
 
 const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, className = '' }) => {
   const mapContainerRef = useRef(null);
-  const { map, addMarker, clearMarkers, flyTo } = useMapbox('live-map-container');
+  const { map, addMarker, clearMarkers, flyTo, mapbox } = useMapbox('live-map-container');
   const [userLocation, setUserLocation] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedType, setSelectedType] = useState(null); // 'alert' or 'user'
@@ -139,9 +138,8 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
           
           // Fit map to show the route
           const coordinates = route.coordinates;
-          const bounds = coordinates.reduce((bounds, coord) => {
-            return bounds.extend(coord);
-          }, new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]));
+          if (!mapbox || !mapbox.current) return;
+          const bounds = coordinates.reduce((bounds, coord) => bounds.extend(coord), new mapbox.current.LngLatBounds(coordinates[0], coordinates[0]));
           
           map.fitBounds(bounds, {
             padding: 80
@@ -368,7 +366,8 @@ const LiveMap = ({ alerts = [], onlineUsers = [], onMarkerClick, selectedAlert, 
 
     // Fit bounds to show all alerts (only if there are alerts and map isn't being manually controlled)
     if (markersRef.current.length > 0 && !map.isMoving() && !selectedItem) {
-      const bounds = new mapboxgl.LngLatBounds();
+    if (!mapbox || !mapbox.current) return;
+    const bounds = new mapbox.current.LngLatBounds();
       
       // Add all alert coordinates to bounds
       alerts.forEach((alert) => {

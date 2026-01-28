@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMapbox } from '../hooks/useMapbox';
 import { Navigation, MapPin, Clock, X } from 'lucide-react';
-import mapboxgl from 'mapbox-gl';
 
 const MapboxMap = ({ alerts = [], onMarkerClick, className = '' }) => {
   const mapContainerRef = useRef(null);
-  const { map, addMarker, clearMarkers, flyTo } = useMapbox('map-container');
+  const { map, addMarker, clearMarkers, flyTo, mapbox } = useMapbox('map-container');
   const [userLocation, setUserLocation] = useState(null);
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [showingRoute, setShowingRoute] = useState(false);
@@ -103,10 +102,9 @@ const MapboxMap = ({ alerts = [], onMarkerClick, className = '' }) => {
           });
           
           // Fit map to show the route
+          if (!mapbox || !mapbox.current) return;
           const coordinates = route.coordinates;
-          const bounds = coordinates.reduce((bounds, coord) => {
-            return bounds.extend(coord);
-          }, new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]));
+          const bounds = coordinates.reduce((bounds, coord) => bounds.extend(coord), new mapbox.current.LngLatBounds(coordinates[0], coordinates[0]));
           
           map.fitBounds(bounds, {
             padding: 80

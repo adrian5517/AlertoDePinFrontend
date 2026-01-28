@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { UserPlus, Shield, Eye, EyeOff, User, Phone, Fire } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { UserPlus, Shield, Eye, EyeOff, User, Phone } from 'lucide-react';
+
+const FireIcon = ({ className = 'w-6 h-6 text-white' }) => (
+  <span className={className} role="img" aria-label="fire">🔥</span>
+);
+import { useAuth } from '../context/AuthContext.jsx';
 
 const userTypes = [
   { value: 'citizen', label: 'Citizen/User', icon: User, color: 'bg-blue-500' },
   { value: 'police', label: 'Police Officer', icon: Shield, color: 'bg-indigo-600' },
   { value: 'hospital', label: 'Hospital Staff', icon: Phone, color: 'bg-red-600' },
-  { value: 'fire', label: 'Fire Department', icon: Fire, color: 'bg-orange-500' },
+  { value: 'fire', label: 'Fire Department', icon: FireIcon, color: 'bg-orange-500' },
 ];
 
 const Signup = () => {

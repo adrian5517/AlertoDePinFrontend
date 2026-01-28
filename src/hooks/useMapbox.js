@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
 import { useAuth } from '../context/AuthContext';
 
-// Mapbox access token (read from Vite env variable)
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+// We will dynamically import mapbox-gl to allow code-splitting and
+// reduce initial bundle size. A `mapbox` ref will be exposed so
+// consumers can access Mapbox constructors when available.
+
+// Mapbox access token will be set on the dynamically-loaded module.
 
 export const useMapbox = (containerId, options = {}) => {
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
+  const mapboxRef = useRef(null);
   const markersRef = useRef([]);
   const { darkMode } = useAuth();
 
   useEffect(() => {
     if (!containerId) return;
+
+    let mounted = true;
 
     const defaultOptions = {
       container: containerId,
@@ -25,38 +29,63 @@ export const useMapbox = (containerId, options = {}) => {
       ...options,
     };
 
-    const mapInstance = new mapboxgl.Map(defaultOptions);
-    
-    // Add navigation controls
-    mapInstance.addControl(new mapboxgl.NavigationControl(), 'top-right');
-    
-    // Add geolocation control with high accuracy settings
-    const geolocateControl = new mapboxgl.GeolocateControl({
-      positionOptions: {
-        enableHighAccuracy: true,  // Use GPS instead of WiFi/Cell tower
-        timeout: 10000,            // Wait up to 10 seconds
-        maximumAge: 0              // Don't use cached location
-      },
-      trackUserLocation: true,      // Keep tracking user position
-      showUserHeading: true,        // Show direction user is facing
-      showUserLocation: true,       // Show blue dot for user location
-      fitBoundsOptions: {
-        maxZoom: 16                // Zoom level when location is found
-      }
-    });
-    
-    mapInstance.addControl(geolocateControl, 'top-right');
-    
-    // Automatically trigger geolocation on load
-    mapInstance.on('load', () => {
-      geolocateControl.trigger();
-    });
+    const initMap = async () => {
+      try {
+        const mapboxModule = await import('mapbox-gl');
+        await import('mapbox-gl/dist/mapbox-gl.css');
 
-    mapRef.current = mapInstance;
-    setMap(mapInstance);
+        if (!mounted) return;
+
+        mapboxModule.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+        mapboxRef.current = mapboxModule;
+
+        const mapInstance = new mapboxModule.Map(defaultOptions);
+
+        // Add navigation controls
+        mapInstance.addControl(new mapboxModule.NavigationControl(), 'top-right');
+
+        // Add geolocation control with high accuracy settings
+        const geolocateControl = new mapboxModule.GeolocateControl({
+          positionOptions: {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          },
+          trackUserLocation: true,
+          showUserHeading: true,
+          showUserLocation: true,
+          fitBoundsOptions: {
+            maxZoom: 16
+          }
+        });
+
+        mapInstance.addControl(geolocateControl, 'top-right');
+
+        mapInstance.on('load', () => {
+          geolocateControl.trigger();
+        });
+
+        mapRef.current = mapInstance;
+        setMap(mapInstance);
+      } catch (err) {
+        console.error('Failed to load mapbox-gl dynamically:', err);
+      }
+    };
+
+    initMap();
 
     return () => {
-      mapInstance.remove();
+      mounted = false;
+      if (mapRef.current) {
+        try {
+          mapRef.current.remove();
+        } catch (e) {
+          console.warn('Error removing map instance during cleanup', e);
+        }
+        mapRef.current = null;
+        setMap(null);
+      }
+      mapboxRef.current = null;
     };
   }, [containerId, darkMode]);
 
@@ -99,13 +128,16 @@ export const useMapbox = (containerId, options = {}) => {
       markerConstructorOptions.anchor = markerConstructorOptions.anchor || 'bottom';
     }
 
-    const marker = new mapboxgl.Marker(markerElement, markerConstructorOptions)
+    const Mapbox = mapboxRef.current;
+    if (!Mapbox) return null;
+
+    const marker = new Mapbox.Marker(markerElement, markerConstructorOptions)
       .setLngLat(coordinates)
       .addTo(map);
 
     if (popup) {
       marker.setPopup(
-        new mapboxgl.Popup({ offset: 25 }).setHTML(popup)
+        new Mapbox.Popup({ offset: 25 }).setHTML(popup)
       );
     }
 
@@ -129,5 +161,6 @@ export const useMapbox = (containerId, options = {}) => {
     clearMarkers,
     flyTo,
     markers: markersRef,
+    mapbox: mapboxRef,
   };
 };

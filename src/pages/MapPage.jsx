@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { MapPin, Filter, Users, Activity } from 'lucide-react';
-import LiveMap from '../components/LiveMap';
+const LiveMap = lazy(() => import('../components/LiveMap'));
 import AlertCard from '../components/AlertCard';
 import { useAuth } from '../context/AuthContext';
 import { alertsAPI } from '../services/api';
@@ -250,12 +250,14 @@ const MapPage = () => {
         </div>
       ) : (
         <div className="card p-0 overflow-hidden">
-          <LiveMap 
-            alerts={filteredAlerts} 
-            onlineUsers={onlineUsers}
-            onMarkerClick={setSelectedAlert}
-            className="h-[600px]"
-          />
+          <Suspense fallback={<div className="p-12 flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div></div>}>
+            <LiveMap 
+              alerts={filteredAlerts} 
+              onlineUsers={onlineUsers}
+              onMarkerClick={setSelectedAlert}
+              className="h-[600px]"
+            />
+          </Suspense>
         </div>
       )}
 

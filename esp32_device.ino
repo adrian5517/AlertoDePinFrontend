@@ -60,40 +60,75 @@ bool gpsHasFix = false;
 Preferences prefs;
 const char* PREF_NAMESPACE = "alertodepin";
 const char* PREF_USER_EMAIL = "user_email";
-  const char* customHead = R"rawliteral(
-    <style>
-      body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f6f8fb;color:#0b2545;padding:14px}
-      .wrap{max-width:600px;margin:16px auto}
-      .logo{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-      .dot{width:44px;height:44px;border-radius:8px;background:#ef4444;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
-      .card{background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
-      label{display:block;font-size:13px;margin-top:10px;color:#213b5a}
-      input{width:100%;padding:10px;border-radius:8px;border:1px solid #e2e8f0;margin-top:6px}
-      .btn{display:inline-block;padding:10px 12px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-weight:700;cursor:pointer;margin-top:10px}
-      .muted{font-size:13px;color:#64748b;margin-top:8px}
-      @media (max-width:480px){ .wrap{padding:8px} .dot{width:40px;height:40px} }
-    </style>
-    <script>
-      document.addEventListener('DOMContentLoaded', function(){
-        try{
-          var tokenInput = document.querySelector('input[name="device_token"]');
-          var emailInput = document.querySelector('input[name="user_email"]');
-          var nameInput = document.querySelector('input[name="user_name"]');
-          var passInput = document.querySelector('input[name="user_password"]');
-          function rowOf(el){ if(!el) return null; return el.closest('tr')||el.parentElement||el; }
-          function hide(el){ var r=rowOf(el); if(r) r.style.display='none'; }
-          function show(el){ var r=rowOf(el); if(r) r.style.display=''; }
-          if(emailInput) emailInput.placeholder='you@example.com';
-          if(passInput) passInput.placeholder='Account password';
-          if(nameInput) nameInput.placeholder='Full name (optional)';
-          if(tokenInput){ hide(tokenInput); var btn=document.createElement('button'); btn.type='button'; btn.className='btn'; btn.textContent='Paste token'; btn.addEventListener('click', function(){ show(tokenInput); btn.style.display='none'; tokenInput.focus(); }); var c=document.querySelector('.content')||document.body; var ins=c.querySelector('table')||c.firstChild||c; if(ins && ins.parentNode) ins.parentNode.insertBefore(btn, ins); }
-          var ssid=document.querySelector('input[name="ssid"], input#ssid'); if(ssid){ ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0){ if(emailInput) show(emailInput); if(nameInput) show(nameInput); if(passInput) show(passInput); } }); }
-          if(tokenInput && tokenInput.value && tokenInput.value.trim().length>0){ if(emailInput) hide(emailInput); if(nameInput) hide(nameInput); if(passInput) hide(passInput); }
-        }catch(e){ console.warn('portal-ui', e); }
-      });
-    </script>
+// Preference keys for stored token and last-known location
+const char* PREF_USER_TOKEN = "user_token";
+const char* PREF_LAST_LAT = "last_lat";
+const char* PREF_LAST_LNG = "last_lng";
+
+// Local web server
+WebServer server(80);
+bool localServerRunning = false;
+
+// Device user info saved in prefs
+String deviceUserEmail = "";
+String deviceUserToken = "";
+
+// Saved-location tracking
+bool hasSavedLocation = false;
+double lastSavedLat = 0.0;
+double lastSavedLng = 0.0;
+unsigned long lastSaveMillis = 0;
+
+// Save thresholds
+const unsigned long SAVE_MIN_INTERVAL_MS = 5 * 60 * 1000UL; // 5 minutes
+const double SAVE_DISTANCE_THRESHOLD_M = 20.0; // 20 meters
+
+// LCD update helpers
+unsigned long lcdHoldUntil = 0;
+unsigned long lastLcdUpdate = 0;
+const unsigned long LCD_UPDATE_MS = 1000UL;
+char lastLine0[17] = {0};
+char lastLine1[17] = {0};
+
+// Simple buzzer helper (blocking short tones)
+void beep(int times, int onMs, int offMs) {
+  for (int i = 0; i < times; ++i) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(onMs);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(offMs);
+  }
+}
+
+// Haversine for meters between two lat/lngs
+double haversineMeters(double lat1, double lon1, double lat2, double lon2) {
+  const double R = 6371000.0; // earth radius in meters
+  double dLat = (lat2 - lat1) * DEG_TO_RAD;
+  double dLon = (lon2 - lon1) * DEG_TO_RAD;
+  double a = sin(dLat/2) * sin(dLat/2) + cos(lat1*DEG_TO_RAD) * cos(lat2*DEG_TO_RAD) * sin(dLon/2) * sin(dLon/2);
+  double c = 2 * atan2(sqrt(a), sqrt(1-a));
+  return R * c;
+}
+
+// Persist current latitude/longitude as last-known location
+void saveLastLocation() {
+  prefs.begin(PREF_NAMESPACE, false);
+  prefs.putString(PREF_LAST_LAT, String(latitude));
+  prefs.putString(PREF_LAST_LNG, String(longitude));
+  prefs.end();
+  lastSavedLat = latitude;
+  lastSavedLng = longitude;
+  lastSaveMillis = millis();
+  hasSavedLocation = true;
+  Serial.printf("Saved last location: %0.6f,%0.6f\n", lastSavedLat, lastSavedLng);
+}
+
+void loadLastLocation() {
+  prefs.begin(PREF_NAMESPACE, false);
+  String sLat = prefs.getString(PREF_LAST_LAT, "");
   String sLng = prefs.getString(PREF_LAST_LNG, "");
   prefs.end();
+
   if (sLat.length() > 0 && sLng.length() > 0) {
     latitude = sLat.toDouble();
     longitude = sLng.toDouble();
