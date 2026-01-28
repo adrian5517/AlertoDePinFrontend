@@ -8,6 +8,7 @@
 #include <ArduinoJson.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
+#include <Wire.h>
 
 // ---------------------- LCD ----------------------
 LiquidCrystal_I2C lcd(0x27, 16, 2);
@@ -16,8 +17,9 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 TinyGPSPlus gps;
 HardwareSerial GPS_Serial(1);
 
+
 // ---------------------- SERVER -------------------
-String serverURL = "https://alertodepinbackend.onrender.com/api/alerts/iot-protected";
+String serverURL = "https://alertodepinbackend.onrender.com/api/alerts/iot";
 // Explicit auth base to avoid brittle string manipulation
 const String AUTH_BASE = "https://alertodepinbackend.onrender.com/api/auth";
 
@@ -58,21 +60,195 @@ bool gpsHasFix = false;
 Preferences prefs;
 const char* PREF_NAMESPACE = "alertodepin";
 const char* PREF_USER_EMAIL = "user_email";
-const char* PREF_USER_TOKEN = "user_token";
-String deviceUserEmail = "";
-String deviceUserToken = "";
+  const char* customHead = R"rawliteral(
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f6f8fb;color:#0b2545;padding:14px}
+      .wrap{max-width:600px;margin:16px auto}
+      .logo{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+      .dot{width:44px;height:44px;border-radius:8px;background:#ef4444;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+      .card{background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+      label{display:block;font-size:13px;margin-top:10px;color:#213b5a}
+      input{width:100%;padding:10px;border-radius:8px;border:1px solid #e2e8f0;margin-top:6px}
+      .btn{display:inline-block;padding:10px 12px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-weight:700;cursor:pointer;margin-top:10px}
+      .muted{font-size:13px;color:#64748b;margin-top:8px}
+      @media (max-width:480px){ .wrap{padding:8px} .dot{width:40px;height:40px} }
+    </style>
+    <script>
+      document.addEventListener('DOMContentLoaded', function(){
+        try{
+          var tokenInput = document.querySelector('input[name="device_token"]');
+          var emailInput = document.querySelector('input[name="user_email"]');
+          var nameInput = document.querySelector('input[name="user_name"]');
+          var passInput = document.querySelector('input[name="user_password"]');
+          function rowOf(el){ if(!el) return null; return el.closest('tr')||el.parentElement||el; }
+          function hide(el){ var r=rowOf(el); if(r) r.style.display='none'; }
+          function show(el){ var r=rowOf(el); if(r) r.style.display=''; }
+          if(emailInput) emailInput.placeholder='you@example.com';
+          if(passInput) passInput.placeholder='Account password';
+          if(nameInput) nameInput.placeholder='Full name (optional)';
+          if(tokenInput){ hide(tokenInput); var btn=document.createElement('button'); btn.type='button'; btn.className='btn'; btn.textContent='Paste token'; btn.addEventListener('click', function(){ show(tokenInput); btn.style.display='none'; tokenInput.focus(); }); var c=document.querySelector('.content')||document.body; var ins=c.querySelector('table')||c.firstChild||c; if(ins && ins.parentNode) ins.parentNode.insertBefore(btn, ins); }
+          var ssid=document.querySelector('input[name="ssid"], input#ssid'); if(ssid){ ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0){ if(emailInput) show(emailInput); if(nameInput) show(nameInput); if(passInput) show(passInput); } }); }
+          if(tokenInput && tokenInput.value && tokenInput.value.trim().length>0){ if(emailInput) hide(emailInput); if(nameInput) hide(nameInput); if(passInput) hide(passInput); }
+        }catch(e){ console.warn('portal-ui', e); }
+      });
+    </script>
+  String sLng = prefs.getString(PREF_LAST_LNG, "");
+  prefs.end();
+  if (sLat.length() > 0 && sLng.length() > 0) {
+    latitude = sLat.toDouble();
+    longitude = sLng.toDouble();
+    hasSavedLocation = true;
+    // set last-saved trackers so we don't immediately rewrite the prefs
+    lastSavedLat = latitude;
+    lastSavedLng = longitude;
+    lastSaveMillis = millis();
+    Serial.printf("Loaded saved location: %0.6f, %0.6f\n", latitude, longitude);
+  } else {
+    hasSavedLocation = false;
+    Serial.println("No saved location in prefs");
+  }
+}
 
-// ---------------------- LOCAL WEB SERVER ------------------
-WebServer server(80);
-bool localServerRunning = false;
+// RTC printing removed.
 
-// ---------------------- BUZZER ------------------
-void beep(int times, int onMs, int offMs) {
-  for (int i = 0; i < times; i++) {
-    digitalWrite(BUZZER_PIN, HIGH);
-    delay(onMs);
-    digitalWrite(BUZZER_PIN, LOW);
-    if (i < times - 1) delay(offMs);
+// Simple I2C scanner: prints addresses to Serial and shows first found on the LCD
+void scanI2CAndShow() {
+  byte error, address;
+  int nDevices = 0;
+  for (address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.print("I2C device found at 0x");
+      if (address < 16) Serial.print("0");
+      Serial.print(address, HEX);
+      Serial.print("  (dec ");
+      Serial.print(address);
+      Serial.println(")");
+      // do not display raw address on the LCD (avoid showing "0x27 dec 39" style message)
+      // keep output to Serial only for diagnostics
+      nDevices++;
+      delay(20);
+    }
+  }
+  if (nDevices == 0) {
+    Serial.println("No I2C devices found");
+    // optionally inform briefly that no I2C devices found
+    lcd.clear(); lcd.setCursor(0,0); lcd.print("I2C: none");
+  } else {
+    Serial.print(nDevices);
+    Serial.println(" device(s) found");
+  }
+  delay(800);
+  // keep LCD clear after initial scan (do not show address details)
+  lcd.clear();
+}
+
+// Simple GPS diagnostic: echo raw GPS bytes and look for NMEA sentences
+void gpsDiagnosticScan() {
+  Serial.println("GPS diagnostic: scanning for NMEA sentences...");
+  const int attempts = 2;
+  int bauds[attempts] = {9600, 4800};
+  bool found = false;
+
+  for (int a = 0; a < attempts && !found; ++a) {
+    int baud = bauds[a];
+    Serial.print("Trying GPS baud: "); Serial.println(baud);
+    // re-init GPS serial at the candidate baud (pins kept the same)
+    GPS_Serial.begin(baud, SERIAL_8N1, 26, 27);
+
+    unsigned long start = millis();
+    String line = "";
+    int nmeaCount = 0;
+
+    while (millis() - start < 8000) {
+      while (GPS_Serial.available()) {
+        char c = (char)GPS_Serial.read();
+        // echo raw bytes so the user can see them on the main Serial
+        Serial.write(c);
+        if (c == '\n') {
+          // got a line, check if it starts with '$' (NMEA)
+          if (line.length() > 0 && line.charAt(0) == '$') {
+            Serial.print("\nNMEA: ");
+            Serial.println(line);
+            nmeaCount++;
+            found = true;
+          }
+          line = "";
+        } else if (c != '\r') {
+          // accumulate (ignore CR)
+          line += c;
+          // keep line from growing too much
+          if (line.length() > 120) line = line.substring(line.length() - 120);
+        }
+      }
+      delay(10);
+    }
+
+    if (nmeaCount > 0) {
+      Serial.print(nmeaCount);
+      Serial.print(" NMEA sentence(s) found at ");
+      Serial.print(baud);
+      Serial.println(" baud");
+      lcd.clear(); lcd.print("GPS: data OK");
+      delay(900);
+      lcd.clear();
+    } else {
+      Serial.print("No NMEA sentences at "); Serial.print(baud); Serial.println(" baud\n");
+    }
+  }
+
+  if (!found) {
+    Serial.println("GPS NMEA not detected on the tested baud rates.");
+    lcd.clear(); lcd.print("GPS: no data");
+    delay(1200);
+    lcd.clear();
+  }
+}
+
+// helper to clear a single LCD row without clearing whole display
+void clearLcdRow(int row) {
+  lcd.setCursor(0, row);
+  for (int i = 0; i < 16; ++i) lcd.print(' ');
+}
+
+// Update the LCD no more frequently than LCD_UPDATE_MS and only when content changed
+void updateLCD() {
+  unsigned long now = millis();
+  // honor an explicit hold so transient messages (e.g. Sent OK) remain visible
+  if (millis() < lcdHoldUntil) return;
+  if (now - lastLcdUpdate < LCD_UPDATE_MS) return;
+  lastLcdUpdate = now;
+
+  char line0[17] = {0};
+  char line1[17] = {0};
+
+  if (gpsHasFix) {
+    // show latitude and longitude (shortened)
+    snprintf(line0, sizeof(line0), "Lat:%7.4f", latitude);
+    snprintf(line1, sizeof(line1), "Lon:%7.4f", longitude);
+  } else if (hasSavedLocation) {
+    // show the last-saved location when no current GPS fix is available
+    snprintf(line0, sizeof(line0), "Last Lat:%7.4f", latitude);
+    snprintf(line1, sizeof(line1), "Last Lon:%7.4f", longitude);
+  } else {
+    // No GPS and no saved location available
+    snprintf(line0, sizeof(line0), "No GPS Fix");
+    snprintf(line1, sizeof(line1), "Connect WiFi");
+  }
+
+  // Only redraw rows that changed
+  if (strncmp(line0, lastLine0, 16) != 0) {
+    clearLcdRow(0);
+    lcd.setCursor(0, 0); lcd.print(line0);
+    strncpy(lastLine0, line0, 16);
+    lastLine0[16] = '\0';
+  }
+  if (strncmp(line1, lastLine1, 16) != 0) {
+    clearLcdRow(1);
+    lcd.setCursor(0, 1); lcd.print(line1);
+    strncpy(lastLine1, line1, 16);
+    lastLine1[16] = '\0';
   }
 }
 
@@ -82,20 +258,19 @@ void updateStatusLeds() {
   digitalWrite(LED_GPS_PIN, gpsHasFix);
 }
 
+// NTP sync removed — device will not attempt to obtain wall-clock time via NTP.
+
 // ---------------------- WIFI MANAGER ------------
 void setupWiFi() {
   WiFiManager wm;
 
-  // 🧪 DEBUG MODE
-  wm.setDebugOutput(true);
+  // 🧪 DEBUG MODE — reduced for release builds
+  wm.setDebugOutput(false);
 
   // Custom portal title
   wm.setTitle("AlertoDePin");
 
-  lcd.clear();
-  lcd.print("WiFi Setup");
-  lcd.setCursor(0, 1);
-  lcd.print("AlertoDePin");
+  lcd.clear(); lcd.print("WiFi Setup"); lcd.setCursor(0, 1); lcd.print("AlertoDePin");
   // Read stored prefs early so we can pre-fill the portal and hide inputs when not needed
   prefs.begin(PREF_NAMESPACE, false);
   String defaultEmail = prefs.getString(PREF_USER_EMAIL, "");
@@ -114,8 +289,8 @@ void setupWiFi() {
   wm.addParameter(&custom_device_token);
 
   // 📲 AP name + password
-  // Inject custom styling into the captive portal to give it a premium look
-  // WiFiManager will include this inside the <head> of the portal HTML
+  // Inject custom styling and improved UX into the captive portal so the portal reveals
+  // account inputs when a network is selected and the labels/placeholders are clearer.
   const char* customHead = R"rawliteral(
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -146,7 +321,7 @@ void setupWiFi() {
           // Helper to find the row or wrapper for WiFiManager's input
           function rowOf(el){ if(!el) return null; return el.closest('tr') || el.parentElement || el; }
           function hideEl(el){ var r = rowOf(el); if(r) r.style.display='none'; }
-          function showEl(el){ var r = rowOf(el); if(r) r.style.display='table-row' || 'block'; }
+          function showEl(el){ var r = rowOf(el); if(r) r.style.display=''; }
 
           // Add helpful placeholders for clarity
           if(emailInput) emailInput.placeholder = 'you@example.com';
@@ -167,7 +342,7 @@ void setupWiFi() {
             pasteBtn.addEventListener('click', function(){ showEl(tokenInput); pasteBtn.style.display='none'; tokenInput.focus(); });
             // insert the button near the top of the portal content
             var insertBeforeEl = container.querySelector('table') || container.firstChild || container;
-            insertBeforeEl.parentNode.insertBefore(pasteBtn, insertBeforeEl);
+            if (insertBeforeEl && insertBeforeEl.parentNode) insertBeforeEl.parentNode.insertBefore(pasteBtn, insertBeforeEl);
             // add an Unlink button for the captive portal that will submit a special value
             var unlinkBtn = document.createElement('button');
             unlinkBtn.type = 'button';
@@ -184,7 +359,40 @@ void setupWiFi() {
                 var f = document.querySelector('form'); if(f) f.submit();
               } catch (e) { console.warn('unlink submit failed', e); }
             });
-            insertBeforeEl.parentNode.insertBefore(unlinkBtn, insertBeforeEl);
+            if (insertBeforeEl && insertBeforeEl.parentNode) insertBeforeEl.parentNode.insertBefore(unlinkBtn, insertBeforeEl);
+          }
+
+          // show account inputs helper (when a network is selected)
+          function showAccountInputs(){
+            var container = document.querySelector('.content') || document.body;
+            if(emailInput) showEl(emailInput);
+            if(nameInput) showEl(nameInput);
+            if(passInput) showEl(passInput);
+            var b = container.querySelector('button[type="button"]'); if(b) b.style.display='inline-block';
+          }
+
+          // auto-reveal when SSID is selected - watch for ssid input presence and changes
+          var ssid = document.querySelector('input[name="ssid"], input#ssid');
+          if(!ssid){
+            var ssidCheck = setInterval(function(){
+              ssid = document.querySelector('input[name="ssid"], input#ssid');
+              if(ssid){
+                clearInterval(ssidCheck);
+                // set placeholder labels
+                ssid.placeholder = 'Network (SSID)';
+                var psk = document.querySelector('input[name="psk"], input#psk');
+                if(psk) psk.placeholder='Network password';
+                ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0) showAccountInputs(); });
+                // also listen for clicks that might populate the ssid field
+                document.addEventListener('click', function(){ setTimeout(function(){ if(ssid.value && ssid.value.trim().length>0) showAccountInputs(); }, 50); });
+              }
+            }, 300);
+          } else {
+            ssid.placeholder='Network (SSID)';
+            var psk = document.querySelector('input[name="psk"], input#psk');
+            if(psk) psk.placeholder='Network password';
+            ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0) showAccountInputs(); });
+            document.addEventListener('click', function(){ setTimeout(function(){ if(ssid.value && ssid.value.trim().length>0) showAccountInputs(); }, 50); });
           }
 
           // If the device already has a saved token (prefilled by code), show a linked banner and collapse account inputs
@@ -212,8 +420,7 @@ void setupWiFi() {
   bool res = wm.autoConnect("AlertoDePin", "12345678");
 
   if (!res) {
-    lcd.clear();
-    lcd.print("WiFi Failed");
+    lcd.clear(); lcd.print("WiFi Failed");
     beep(3, 200, 100);
     delay(3000);
     ESP.restart();
@@ -508,9 +715,39 @@ void openConfigPortalNonDestructive() {
   wm.addParameter(&custom_user_password);
   wm.addParameter(&custom_device_token);
 
-  // reuse the same custom head injection used in setupWiFi
+  // reuse the same custom head injection used in setupWiFi to keep UX consistent
   const char* customHead = R"rawliteral(
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f6f8fb;color:#0b2545;padding:14px}
+      .wrap{max-width:600px;margin:16px auto}
+      .logo{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+      .dot{width:44px;height:44px;border-radius:8px;background:#ef4444;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+      .card{background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+      label{display:block;font-size:13px;margin-top:10px;color:#213b5a}
+      input{width:100%;padding:10px;border-radius:8px;border:1px solid #e2e8f0;margin-top:6px}
+      .btn{display:inline-block;padding:10px 12px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-weight:700;cursor:pointer;margin-top:10px}
+      .muted{font-size:13px;color:#64748b;margin-top:8px}
+      @media (max-width:480px){ .wrap{padding:8px} .dot{width:40px;height:40px} }
+    </style>
+    <script>
+      document.addEventListener('DOMContentLoaded', function(){
+        try{
+          var tokenInput = document.querySelector('input[name="device_token"]');
+          var emailInput = document.querySelector('input[name="user_email"]');
+          var nameInput = document.querySelector('input[name="user_name"]');
+          var passInput = document.querySelector('input[name="user_password"]');
+          function rowOf(el){ if(!el) return null; return el.closest('tr')||el.parentElement||el; }
+          function hide(el){ var r=rowOf(el); if(r) r.style.display='none'; }
+          function show(el){ var r=rowOf(el); if(r) r.style.display=''; }
+          if(emailInput) emailInput.placeholder='you@example.com';
+          if(passInput) passInput.placeholder='Account password';
+          if(nameInput) nameInput.placeholder='Full name (optional)';
+          if(tokenInput){ hide(tokenInput); var btn=document.createElement('button'); btn.type='button'; btn.className='btn'; btn.textContent='Paste token'; btn.addEventListener('click', function(){ show(tokenInput); btn.style.display='none'; tokenInput.focus(); }); var c=document.querySelector('.content')||document.body; var ins=c.querySelector('table')||c.firstChild||c; if(ins && ins.parentNode) ins.parentNode.insertBefore(btn, ins); }
+          var ssid=document.querySelector('input[name="ssid"], input#ssid'); if(ssid){ ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0){ if(emailInput) show(emailInput); if(nameInput) show(nameInput); if(passInput) show(passInput); } }); }
+          if(tokenInput && tokenInput.value && tokenInput.value.trim().length>0){ if(emailInput) hide(emailInput); if(nameInput) hide(nameInput); if(passInput) hide(passInput); }
+        }catch(e){ console.warn('portal-ui', e); }
+      });
+    </script>
   )rawliteral";
   wm.setCustomHeadElement(customHead);
 
@@ -602,13 +839,38 @@ void setup() {
   // GPS serial: RX=26, TX=27 (adjust if your wiring differs)
   GPS_Serial.begin(9600, SERIAL_8N1, 26, 27);
 
+  // Ensure I2C is initialized for the LCD backpack
+  // Initialize I2C explicitly for ESP32 to avoid ambiguous pin mapping on some boards
+  Wire.begin();
+  delay(50); // allow bus to settle before LCD init
+
+  // Probe common I2C addresses and instantiate the LCD object dynamically so
+  // the sketch works with different expansion boards that use 0x27 or 0x3F.
+  // Use the static LCD instance (address 0x27 by default).
+  // This keeps behavior stable across expansion boards per user preference.
   lcd.init();
   lcd.backlight();
+
+  // Quick boot test so users can confirm the display is working
+  lcd.setCursor(0, 0);
+  lcd.print("LCD init...");
+  delay(800);
+  lcd.clear();
+  // Run a quick I2C scan and show first found address on the LCD
+  scanI2CAndShow();
 
   pinMode(BTN_POLICE_PIN,   INPUT_PULLUP);
   pinMode(BTN_HOSPITAL_PIN, INPUT_PULLUP);
   pinMode(BTN_FIRE_PIN,     INPUT_PULLUP);
   pinMode(BTN_WIFI_RESET,   INPUT_PULLUP);
+
+  // Initialize last button states from the pins to avoid detecting a
+  // spurious press when the device powers up while a button is held.
+  lastPoliceState   = digitalRead(BTN_POLICE_PIN);
+  lastHospitalState = digitalRead(BTN_HOSPITAL_PIN);
+  lastFireState     = digitalRead(BTN_FIRE_PIN);
+  lastButtonTime = millis();
+  wifiResetPressStart = 0;
 
   pinMode(LED_WIFI_PIN, OUTPUT);
   pinMode(LED_GPS_PIN,  OUTPUT);
@@ -619,6 +881,11 @@ void setup() {
   deviceUserEmail = prefs.getString(PREF_USER_EMAIL, "");
   deviceUserToken = prefs.getString(PREF_USER_TOKEN, "");
   prefs.end();
+
+  // Load previously-saved last-known GPS coordinates (if any)
+  loadLastLocation();
+
+  // RTC support removed; skipping RTC init.
   if (deviceUserEmail.length() > 0) {
     Serial.println("Loaded stored device user email: " + deviceUserEmail);
     lcd.clear();
@@ -634,6 +901,7 @@ void setup() {
   }
 
   setupWiFi();
+  // NTP sync removed: skipping any attempt to obtain wall-clock time here
   // Start local web server so device is reachable both in STA and AP (portal) modes.
   // This ensures users can access the device IP (e.g., 192.168.4.1 when in AP)
   startLocalWebServer();
@@ -650,6 +918,20 @@ void loop() {
       latitude  = gps.location.lat();
       longitude = gps.location.lng();
       gpsHasFix = gps.location.isValid();
+
+      if (gpsHasFix) {
+        // compute movement since last saved location
+        double dist = hasSavedLocation ? haversineMeters(lastSavedLat, lastSavedLng, latitude, longitude) : 1e9;
+        unsigned long now = millis();
+        bool timeOK = (now - lastSaveMillis) > SAVE_MIN_INTERVAL_MS;
+        bool movedEnough = dist > SAVE_DISTANCE_THRESHOLD_M;
+        if (!hasSavedLocation || movedEnough || timeOK) {
+          saveLastLocation();
+          Serial.printf("Saved location after move/time: dist=%.1fm timeOK=%d moved=%d\n", dist, timeOK ? 1 : 0, movedEnough ? 1 : 0);
+        }
+      }
+
+      // RTC removed: no RTC sync here.
     }
   }
 
@@ -661,6 +943,7 @@ void loop() {
   }
 
   updateStatusLeds();
+  // NTP sync removed: no periodic NTP attempts
   checkButtons();
   checkWiFiReset();
 
@@ -669,16 +952,12 @@ void loop() {
     server.handleClient();
   }
 
-  lcd.setCursor(0, 0);
-  lcd.print("Lat:");
-  lcd.print(latitude, 4);
-  lcd.setCursor(0, 1);
-  lcd.print("Lon:");
-  lcd.print(longitude, 4);
+  // Update LCD at a controlled rate to avoid flicker
+  updateLCD();
+
+  delay(200);
 
   // show token status briefly if user long-presses another button? (left as-is)
-
-  delay(150);
 }
 
 // ---------------------- WIFI RESET --------------
@@ -740,10 +1019,20 @@ void checkButtons() {
   if (!policePressed && !hospitalPressed && !firePressed) return;
   lastButtonTime = now;
 
-  if (!gpsHasFix || WiFi.status() != WL_CONNECTED) {
+  // Require WiFi. Allow sending if we have either a live GPS fix or a previously-saved location.
+  if (WiFi.status() != WL_CONNECTED) {
     lcd.clear();
-    lcd.print("GPS/WiFi ERR");
+    lcd.print("WiFi ERR");
     beep(3, 100, 80);
+    delay(1200);
+    lcd.clear();
+    return;
+  }
+
+  if (!(gpsHasFix || hasSavedLocation)) {
+    lcd.clear();
+    lcd.print("No location");
+    beep(2, 100, 80);
     delay(1200);
     lcd.clear();
     return;
@@ -759,8 +1048,30 @@ void sendAlert(const String &type) {
   HTTPClient http;
 
   lcd.clear();
-  lcd.print("Sending ");
-  lcd.print(type);
+  if (gpsHasFix) {
+    lcd.print("Sending ");
+    lcd.print(type);
+  } else if (hasSavedLocation) {
+    lcd.print("Sending (last) ");
+    lcd.print(type);
+  } else {
+    lcd.print("Sending ");
+    lcd.print(type);
+  }
+
+  // Prepare timestamp: prefer GPS time. NTP/RTC fallbacks removed.
+  char tsbuf[32] = {0};
+  bool clientHasTimestamp = false;
+  if (gps.time.isValid() && gps.date.isValid()) {
+    int y = gps.date.year();
+    int m = gps.date.month();
+    int d = gps.date.day();
+    int hh = gps.time.hour();
+    int mm = gps.time.minute();
+    int ss = gps.time.second();
+    snprintf(tsbuf, sizeof(tsbuf), "%04d-%02d-%02dT%02d:%02d:%02dZ", y, m, d, hh, mm, ss);
+    clientHasTimestamp = true;
+  }
 
   http.begin(serverURL);
   http.addHeader("Content-Type", "application/json");
@@ -768,31 +1079,45 @@ void sendAlert(const String &type) {
     http.addHeader("Authorization", "Bearer " + deviceUserToken);
   }
 
-  // Build JSON payload and include device's associated user email if available
-  String payload = "{";
-  payload += "\"type\":\"" + type + "\",";
-  payload += "\"latitude\": " + String(latitude, 6) + ",";
-  payload += "\"longitude\": " + String(longitude, 6);
-  if (deviceUserEmail.length() > 0) {
-    payload += ",\"userEmail\":\"" + deviceUserEmail + "\"";
-  }
-  payload += "}";
+  // Build JSON payload using ArduinoJson
+  String locSource = gpsHasFix ? "gps" : (hasSavedLocation ? "saved" : "unknown");
+  DynamicJsonDocument doc(512);
+  doc["type"] = type;
+  doc["latitude"] = latitude;
+  doc["longitude"] = longitude;
+  doc["locationSource"] = locSource;
+  doc["clientHasTimestamp"] = clientHasTimestamp;
+  if (deviceUserEmail.length() > 0) doc["userEmail"] = deviceUserEmail;
+  if (clientHasTimestamp) doc["timestamp"] = String(tsbuf);
 
+  String payload;
+  serializeJson(doc, payload);
   Serial.println(payload);
 
   int code = http.POST(payload);
 
   lcd.clear();
-  if (code == 201 || code == 200) {
-    lcd.print("Sent OK");
+  if (code > 0 && (code == 201 || code == 200)) {
+    if (gpsHasFix) {
+      lcd.print("Sent OK");
+    } else if (hasSavedLocation) {
+      lcd.print("Sent (last)");
+    } else {
+      lcd.print("Sent OK");
+    }
     beep(1, 150, 0);
   } else {
-    lcd.print("ERR ");
-    lcd.print(code);
+    // Generic server/connection error — keep last saved location and inform user
+    lcd.print("Server down");
+    lcd.setCursor(0,1);
+    lcd.print("Please wait");
     beep(3, 120, 80);
   }
 
-  delay(1500);
-  lcd.clear();
+  // keep the sent/err message visible for a short time before allowing updates
+  lcdHoldUntil = millis() + 4000UL; // 4 seconds
+  // Force next LCD redraw after hold by clearing cached last-lines so updateLCD will refresh
+  lastLine0[0] = '\0';
+  lastLine1[0] = '\0';
   http.end();
 }
