@@ -145,7 +145,7 @@ const Signup = () => {
                 <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
                   <span className="text-2xl">👥</span>
                 </div>
-                <p className="text-white/90 font-medium">Citizens & Family Members</p>
+                <p className="text-white/90 font-medium">Citizens</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
