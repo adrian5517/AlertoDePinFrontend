@@ -4,7 +4,21 @@ import { motion } from 'framer-motion';
 import { UserPlus, Shield, Eye, EyeOff, User, Phone } from 'lucide-react';
 
 const FireIcon = ({ className = 'w-6 h-6 text-white' }) => (
-  <span className={className} role="img" aria-label="fire">🔥</span>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    role="img"
+    aria-label="fire"
+  >
+    <path d="M12 2s4 4 4 8c0 2-1 4-4 6-3-2-4-4-4-6 0-4 4-8 4-8z" />
+    <path d="M9.5 14.5c.8.8 1.9 1.5 2.5 1.5s1.7-.7 2.5-1.5" />
+  </svg>
 );
 import { useAuth } from '../context/AuthContext.jsx';
 

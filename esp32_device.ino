@@ -10,6 +10,17 @@
 #include <ESPmDNS.h>
 #include <Wire.h>
 
+// Forward declarations for functions used before their definitions
+void checkButtons();
+void checkWiFiReset();
+void sendAlert(const String &type);
+void setupWiFi();
+void openConfigPortalNonDestructive();
+void startLocalWebServer();
+String loginFormHtml(const String &msg);
+void handleRoot();
+void handleDeviceLogin();
+
 // ---------------------- LCD ----------------------
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
@@ -329,122 +340,61 @@ void setupWiFi() {
   const char* customHead = R"rawliteral(
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
-      :root{--bg:#ffffff;--card:#fff;--muted:#9aa8bf;--accent1:#EF4444;--accent2:#DC2626}
-      body{font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#ffffff,#f8fbff 60%);color:#0b2545}
-      .portal-wrap{max-width:640px;margin:28px auto;padding:18px}
+      :root{--bg:#ffffff;--card:#fff;--muted:#64748b;--accent:#ef4444}
+      body{font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#ffffff,#f8fbff 60%);color:#071133}
+      .portal-wrap{max-width:640px;margin:18px auto;padding:16px}
       .brand{display:flex;align-items:center;gap:12px}
-      .brand .logo{width:64px;height:64px;border-radius:12px;background:linear-gradient(90deg,var(--accent1),var(--accent2));display:flex;align-items:center;justify-content:center;box-shadow:0 12px 30px rgba(2,6,23,0.12)}
-      .brand h1{margin:0;font-size:20px;color:#071133}
-      .card{background:#fff;padding:18px;border-radius:12px;box-shadow:0 12px 40px rgba(15,23,42,0.06);margin-top:14px}
-      label{display:block;font-size:13px;color:#0b2545;margin-bottom:6px}
-      input[type=text], input[type=password], input[type=email]{width:100%;padding:12px;border-radius:10px;border:1px solid #e6eef8;background:#fcfeff}
-      .primary{display:inline-block;padding:10px 14px;border-radius:10px;background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#fff;border:none;font-weight:700;cursor:pointer}
+      .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(90deg,var(--accent),#dc2626);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+      .card{background:#fff;padding:14px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.06);margin-top:12px}
+      .field-row{margin-bottom:12px}
+      .portal-label{display:block;font-size:13px;color:#0b2545;margin-bottom:6px}
+      input[type=text], input[type=password], input[type=email]{width:100%;padding:12px;border-radius:10px;border:1px solid #e6eef8;background:#fcfeff;font-size:15px}
+      .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+      .btn{padding:10px 14px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:700;cursor:pointer}
+      .btn.secondary{background:#fff;color:#1f2937;border:1px solid #e6eef8}
       .muted{color:var(--muted);font-size:13px}
-      .linked-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border-radius:10px;background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#fff;margin-bottom:12px}
-      .small{font-size:13px;color:#0b2545}
-      @media (max-width:640px){.portal-wrap{margin:12px;padding:12px}}    
+      .linked-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:10px;background:linear-gradient(90deg,var(--accent),#dc2626);color:#fff;margin-bottom:12px}
+      @media (max-width:640px){.portal-wrap{margin:10px;padding:12px}}
     </style>
     <script>
       document.addEventListener('DOMContentLoaded', function(){
         try{
-          // Grab the portal inputs rendered by WiFiManager
-          var tokenInput = document.querySelector('input[name="device_token"]');
-          var emailInput = document.querySelector('input[name="user_email"]');
-          var nameInput = document.querySelector('input[name="user_name"]');
-          var passInput = document.querySelector('input[name="user_password"]');
+          // Find the inputs created by WiFiManager
+          var inputs = {
+            token: document.querySelector('input[name="device_token"]'),
+            email: document.querySelector('input[name="user_email"]'),
+            name: document.querySelector('input[name="user_name"]'),
+            pass: document.querySelector('input[name="user_password"]'),
+            ssid: document.querySelector('input[name="ssid"]') || document.querySelector('input#ssid'),
+            psk: document.querySelector('input[name="psk"]') || document.querySelector('input#psk')
+          };
 
-          // Helper to find the row or wrapper for WiFiManager's input
           function rowOf(el){ if(!el) return null; return el.closest('tr') || el.parentElement || el; }
-          function hideEl(el){ var r = rowOf(el); if(r) r.style.display='none'; }
-          function showEl(el){ var r = rowOf(el); if(r) r.style.display=''; }
+          function ensureLabel(el, text){ var r=rowOf(el); if(!r) return; var existing = r.querySelector('.portal-label'); if(!existing){ var l=document.createElement('label'); l.className='portal-label'; l.textContent=text; r.insertBefore(l, r.firstChild);} el.setAttribute('aria-label', text); }
+          function hide(el){ var r=rowOf(el); if(r) r.style.display='none'; }
+          function show(el){ var r=rowOf(el); if(r) r.style.display=''; }
 
-          // Add helpful placeholders for clarity
-          if(emailInput) emailInput.placeholder = 'you@example.com';
-          if(passInput) passInput.placeholder = 'Your account password';
-          if(nameInput) nameInput.placeholder = 'Full name (for register)';
-          if(tokenInput) tokenInput.placeholder = 'Paste device token (optional)';
+          // Apply clear placeholders and labels
+          if(inputs.email){ ensureLabel(inputs.email, 'Account Email (optional)'); inputs.email.placeholder='you@example.com'; }
+          if(inputs.name){ ensureLabel(inputs.name, 'Full name (for register)'); inputs.name.placeholder='Juan Dela Cruz'; }
+          if(inputs.pass){ ensureLabel(inputs.pass, 'Account Password'); inputs.pass.placeholder='Minimum 6 characters'; }
+          if(inputs.token){ ensureLabel(inputs.token, 'Device Token (optional)'); inputs.token.placeholder='Paste device token (optional)'; }
+          if(inputs.ssid){ ensureLabel(inputs.ssid, 'Network (SSID)'); if(inputs.ssid.placeholder==='') inputs.ssid.placeholder='Network (SSID)'; }
+          if(inputs.psk){ ensureLabel(inputs.psk, 'Network Password'); if(inputs.psk.placeholder==='') inputs.psk.placeholder='Network password'; }
 
-          // Move token input out of the main flow and hide it by default; provide a small toggle to reveal it
-          if(tokenInput){
-            // hide the token input row initially
-            hideEl(tokenInput);
-            var container = document.querySelector('.content') || document.body;
-            var pasteBtn = document.createElement('button');
-            pasteBtn.type = 'button';
-            pasteBtn.textContent = 'Paste token';
-            pasteBtn.className = 'primary';
-            pasteBtn.style.margin = '8px 0';
-            pasteBtn.addEventListener('click', function(){ showEl(tokenInput); pasteBtn.style.display='none'; tokenInput.focus(); });
-            // insert the button near the top of the portal content
-            var insertBeforeEl = container.querySelector('table') || container.firstChild || container;
-            if (insertBeforeEl && insertBeforeEl.parentNode) insertBeforeEl.parentNode.insertBefore(pasteBtn, insertBeforeEl);
-            // add an Unlink button for the captive portal that will submit a special value
-            var unlinkBtn = document.createElement('button');
-            unlinkBtn.type = 'button';
-            unlinkBtn.textContent = 'Unlink device';
-            unlinkBtn.className = 'primary';
-            unlinkBtn.style.margin = '8px 8px';
-            unlinkBtn.style.background = '#fff';
-            unlinkBtn.style.color = '#9b1f1f';
-            unlinkBtn.addEventListener('click', function(){
-              try {
-                if (!confirm('Are you sure you want to unlink this device?')) return;
-                // set special unlink marker and submit the form
-                if(tokenInput) tokenInput.value = '__UNLINK__';
-                var f = document.querySelector('form'); if(f) f.submit();
-              } catch (e) { console.warn('unlink submit failed', e); }
-            });
-            if (insertBeforeEl && insertBeforeEl.parentNode) insertBeforeEl.parentNode.insertBefore(unlinkBtn, insertBeforeEl);
+          // Hide token by default and show a friendly Paste token button
+          if(inputs.token){ hide(inputs.token); var container = document.querySelector('.content') || document.body; var btnWrap = document.createElement('div'); btnWrap.className='controls'; var pasteBtn=document.createElement('button'); pasteBtn.type='button'; pasteBtn.className='btn secondary'; pasteBtn.textContent='Paste device token'; pasteBtn.addEventListener('click', function(){ show(inputs.token); pasteBtn.style.display='none'; inputs.token.focus(); }); btnWrap.appendChild(pasteBtn);
+            // Unlink button
+            var unlinkBtn=document.createElement('button'); unlinkBtn.type='button'; unlinkBtn.className='btn secondary'; unlinkBtn.textContent='Unlink device'; unlinkBtn.addEventListener('click', function(){ if(!confirm('Unlink device?')) return; inputs.token.value='__UNLINK__'; var f=document.querySelector('form'); if(f) f.submit(); }); btnWrap.appendChild(unlinkBtn);
+            var insertBeforeEl = container.querySelector('table') || container.firstChild || container; if(insertBeforeEl && insertBeforeEl.parentNode) insertBeforeEl.parentNode.insertBefore(btnWrap, insertBeforeEl);
           }
 
-          // show account inputs helper (when a network is selected)
-          function showAccountInputs(){
-            var container = document.querySelector('.content') || document.body;
-            if(emailInput) showEl(emailInput);
-            if(nameInput) showEl(nameInput);
-            if(passInput) showEl(passInput);
-            var b = container.querySelector('button[type="button"]'); if(b) b.style.display='inline-block';
-          }
+          // Auto-reveal account inputs when SSID is selected
+          function revealAccount(){ if(inputs.email) show(inputs.email); if(inputs.name) show(inputs.name); if(inputs.pass) show(inputs.pass); }
+          if(inputs.ssid){ inputs.ssid.addEventListener('input', function(){ if(this.value && this.value.trim()) revealAccount(); }); document.addEventListener('click', function(){ setTimeout(function(){ if(inputs.ssid && inputs.ssid.value && inputs.ssid.value.trim()) revealAccount(); },50); }); }
 
-          // auto-reveal when SSID is selected - watch for ssid input presence and changes
-          var ssid = document.querySelector('input[name="ssid"], input#ssid');
-          if(!ssid){
-            var ssidCheck = setInterval(function(){
-              ssid = document.querySelector('input[name="ssid"], input#ssid');
-              if(ssid){
-                clearInterval(ssidCheck);
-                // set placeholder labels
-                ssid.placeholder = 'Network (SSID)';
-                var psk = document.querySelector('input[name="psk"], input#psk');
-                if(psk) psk.placeholder='Network password';
-                ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0) showAccountInputs(); });
-                // also listen for clicks that might populate the ssid field
-                document.addEventListener('click', function(){ setTimeout(function(){ if(ssid.value && ssid.value.trim().length>0) showAccountInputs(); }, 50); });
-              }
-            }, 300);
-          } else {
-            ssid.placeholder='Network (SSID)';
-            var psk = document.querySelector('input[name="psk"], input#psk');
-            if(psk) psk.placeholder='Network password';
-            ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0) showAccountInputs(); });
-            document.addEventListener('click', function(){ setTimeout(function(){ if(ssid.value && ssid.value.trim().length>0) showAccountInputs(); }, 50); });
-          }
-
-          // If the device already has a saved token (prefilled by code), show a linked banner and collapse account inputs
-          if(tokenInput && tokenInput.value && tokenInput.value.trim().length>0){
-            hideEl(emailInput); hideEl(nameInput); hideEl(passInput);
-            var container = document.querySelector('.content') || document.body;
-            var banner = document.createElement('div');
-            banner.className = 'linked-banner';
-            banner.innerHTML = '<div><strong>Device linked</strong><div class="muted">Using saved token</div></div><div><button id="_change" class="primary" style="background:#fff;color:#1f2937;">Change</button></div>';
-            container.insertBefore(banner, container.firstChild);
-            document.getElementById('_change').addEventListener('click', function(){
-              // reveal the hidden inputs so user can change account or paste a new token
-              showEl(emailInput); showEl(nameInput); showEl(passInput);
-              // also reveal token paste button if present
-              var b = container.querySelector('button[type="button"]'); if(b) b.style.display='inline-block';
-              banner.parentElement.removeChild(banner);
-            });
+          // If device token already present, hide account inputs and show linked banner
+          if(inputs.token && inputs.token.value && inputs.token.value.trim().length>0){ if(inputs.email) hide(inputs.email); if(inputs.name) hide(inputs.name); if(inputs.pass) hide(inputs.pass); var c = document.querySelector('.content') || document.body; var banner=document.createElement('div'); banner.className='linked-banner'; var emailDisplay=(inputs.email && inputs.email.value)?inputs.email.value:'Linked (token)'; banner.innerHTML='<div><strong>Device linked</strong><div class="muted">'+emailDisplay+'</div></div><div><button id="_change" class="btn secondary">Change</button></div>'; if(c && c.firstChild) c.insertBefore(banner, c.firstChild); var change=document.getElementById('_change'); if(change){ change.addEventListener('click', function(){ if(inputs.email) show(inputs.email); if(inputs.name) show(inputs.name); if(inputs.pass) show(inputs.pass); if(pasteBtn) pasteBtn.style.display='inline-block'; banner.remove(); }); }
           }
         }catch(e){ console.warn('portal-ui init err', e); }
       });
@@ -753,33 +703,51 @@ void openConfigPortalNonDestructive() {
   // reuse the same custom head injection used in setupWiFi to keep UX consistent
   const char* customHead = R"rawliteral(
     <style>
-      body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f6f8fb;color:#0b2545;padding:14px}
-      .wrap{max-width:600px;margin:16px auto}
+      :root{--bg:#ffffff;--card:#fff;--muted:#64748b;--accent:#ef4444}
+      body{font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;margin:0;background:#f6f8fb;color:#071133;padding:14px}
+      .wrap{max-width:600px;margin:12px auto}
       .logo{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-      .dot{width:44px;height:44px;border-radius:8px;background:#ef4444;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
-      .card{background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
-      label{display:block;font-size:13px;margin-top:10px;color:#213b5a}
-      input{width:100%;padding:10px;border-radius:8px;border:1px solid #e2e8f0;margin-top:6px}
-      .btn{display:inline-block;padding:10px 12px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-weight:700;cursor:pointer;margin-top:10px}
-      .muted{font-size:13px;color:#64748b;margin-top:8px}
+      .dot{width:44px;height:44px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+      .card{background:#fff;padding:12px;border-radius:10px;box-shadow:0 8px 24px rgba(2,6,23,0.06)}
+      .field-row{margin-bottom:12px}
+      .portal-label{display:block;font-size:13px;margin-bottom:6px;color:#213b5a}
+      input{width:100%;padding:10px;border-radius:8px;border:1px solid #e6eef8;margin-top:6px;font-size:15px}
+      .btn{display:inline-block;padding:10px 12px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-weight:700;cursor:pointer;margin-top:10px}
+      .btn.secondary{background:#fff;color:#1f2937;border:1px solid #e6eef8}
+      .muted{font-size:13px;color:var(--muted);margin-top:8px}
       @media (max-width:480px){ .wrap{padding:8px} .dot{width:40px;height:40px} }
     </style>
     <script>
       document.addEventListener('DOMContentLoaded', function(){
         try{
-          var tokenInput = document.querySelector('input[name="device_token"]');
-          var emailInput = document.querySelector('input[name="user_email"]');
-          var nameInput = document.querySelector('input[name="user_name"]');
-          var passInput = document.querySelector('input[name="user_password"]');
+          var inputs = {
+            token: document.querySelector('input[name="device_token"]'),
+            email: document.querySelector('input[name="user_email"]'),
+            name: document.querySelector('input[name="user_name"]'),
+            pass: document.querySelector('input[name="user_password"]'),
+            ssid: document.querySelector('input[name="ssid"]') || document.querySelector('input#ssid'),
+            psk: document.querySelector('input[name="psk"]') || document.querySelector('input#psk')
+          };
+
           function rowOf(el){ if(!el) return null; return el.closest('tr')||el.parentElement||el; }
+          function ensureLabel(el, text){ var r=rowOf(el); if(!r) return; var existing=r.querySelector('.portal-label'); if(!existing){ var l=document.createElement('label'); l.className='portal-label'; l.textContent=text; r.insertBefore(l, r.firstChild);} el.setAttribute('aria-label', text); }
           function hide(el){ var r=rowOf(el); if(r) r.style.display='none'; }
           function show(el){ var r=rowOf(el); if(r) r.style.display=''; }
-          if(emailInput) emailInput.placeholder='you@example.com';
-          if(passInput) passInput.placeholder='Account password';
-          if(nameInput) nameInput.placeholder='Full name (optional)';
-          if(tokenInput){ hide(tokenInput); var btn=document.createElement('button'); btn.type='button'; btn.className='btn'; btn.textContent='Paste token'; btn.addEventListener('click', function(){ show(tokenInput); btn.style.display='none'; tokenInput.focus(); }); var c=document.querySelector('.content')||document.body; var ins=c.querySelector('table')||c.firstChild||c; if(ins && ins.parentNode) ins.parentNode.insertBefore(btn, ins); }
-          var ssid=document.querySelector('input[name="ssid"], input#ssid'); if(ssid){ ssid.addEventListener('input', function(){ if(this.value && this.value.trim().length>0){ if(emailInput) show(emailInput); if(nameInput) show(nameInput); if(passInput) show(passInput); } }); }
-          if(tokenInput && tokenInput.value && tokenInput.value.trim().length>0){ if(emailInput) hide(emailInput); if(nameInput) hide(nameInput); if(passInput) hide(passInput); }
+
+          if(inputs.email){ ensureLabel(inputs.email, 'Account Email (optional)'); inputs.email.placeholder='you@example.com'; }
+          if(inputs.name){ ensureLabel(inputs.name, 'Full name (for register)'); inputs.name.placeholder='Full name (for register)'; }
+          if(inputs.pass){ ensureLabel(inputs.pass, 'Account Password'); inputs.pass.placeholder='Your account password'; }
+          if(inputs.token){ ensureLabel(inputs.token, 'Device Token (optional)'); inputs.token.placeholder='Paste device token (optional)'; }
+          if(inputs.ssid){ ensureLabel(inputs.ssid, 'Network (SSID)'); if(!inputs.ssid.placeholder) inputs.ssid.placeholder='Network (SSID)'; }
+          if(inputs.psk){ ensureLabel(inputs.psk, 'Network Password'); if(!inputs.psk.placeholder) inputs.psk.placeholder='Network password'; }
+
+          if(inputs.token){ hide(inputs.token); var container=document.querySelector('.content')||document.body; var controls=document.createElement('div'); controls.style.display='flex'; controls.style.gap='8px'; controls.style.flexWrap='wrap'; controls.style.marginTop='8px'; var pasteBtn=document.createElement('button'); pasteBtn.type='button'; pasteBtn.className='btn secondary'; pasteBtn.textContent='Paste token'; pasteBtn.addEventListener('click', function(){ show(inputs.token); pasteBtn.style.display='none'; inputs.token.focus(); }); controls.appendChild(pasteBtn); var unlinkBtn=document.createElement('button'); unlinkBtn.type='button'; unlinkBtn.className='btn secondary'; unlinkBtn.textContent='Unlink device'; unlinkBtn.addEventListener('click', function(){ if(!confirm('Are you sure you want to unlink this device?')) return; inputs.token.value='__UNLINK__'; var f=document.querySelector('form'); if(f) f.submit(); }); controls.appendChild(unlinkBtn); var insertBeforeEl = container.querySelector('table') || container.firstChild || container; if(insertBeforeEl && insertBeforeEl.parentNode) insertBeforeEl.parentNode.insertBefore(controls, insertBeforeEl); }
+
+          function revealAccount(){ if(inputs.email) show(inputs.email); if(inputs.name) show(inputs.name); if(inputs.pass) show(inputs.pass); }
+          if(inputs.ssid){ inputs.ssid.addEventListener('input', function(){ if(this.value && this.value.trim()) revealAccount(); }); document.addEventListener('click', function(){ setTimeout(function(){ if(inputs.ssid && inputs.ssid.value && inputs.ssid.value.trim()) revealAccount(); },50); }); }
+
+          if(inputs.token && inputs.token.value && inputs.token.value.trim().length>0){ if(inputs.email) hide(inputs.email); if(inputs.name) hide(inputs.name); if(inputs.pass) hide(inputs.pass); var c=document.querySelector('.content')||document.body; var banner=document.createElement('div'); banner.className='linked-banner'; var emailDisplay=(inputs.email && inputs.email.value)?inputs.email.value:'Linked (token)'; banner.innerHTML='<div><strong>Device linked</strong><div class="muted">'+emailDisplay+'</div></div><div><button id="_change" class="btn secondary">Change</button></div>'; if(c && c.firstChild) c.insertBefore(banner, c.firstChild); var change=document.getElementById('_change'); if(change){ change.addEventListener('click', function(){ if(inputs.email) show(inputs.email); if(inputs.name) show(inputs.name); if(inputs.pass) show(inputs.pass); if(pasteBtn) pasteBtn.style.display='inline-block'; banner.remove(); }); }
+          }
         }catch(e){ console.warn('portal-ui', e); }
       });
     </script>
